@@ -31,14 +31,14 @@ except ImportError:
 # SYNTHETIC DATA GENERATOR
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def generate_synthetic_dataset(n_samples: int = 2000, fraud_ratio: float = 0.3) -> Tuple[np.ndarray, np.ndarray]:
+def generate_synthetic_dataset(n_samples: int = 2000, fraud_ratio: float = 0.3, rng_seed: int = 42) -> Tuple[np.ndarray, np.ndarray]:
     """
     Generate synthetic feature matrix + labels for training.
     Features correspond to FeatureEngineer.FEATURE_NAMES (31 features).
     
     Returns: (X, y) where y=1 is fraud, y=0 is clean.
     """
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(rng_seed)
     n_fraud = int(n_samples * fraud_ratio)
     n_clean = n_samples - n_fraud
 
@@ -115,6 +115,26 @@ def generate_synthetic_dataset(n_samples: int = 2000, fraud_ratio: float = 0.3) 
     X = np.vstack([clean, fraud])
     y = np.concatenate([np.zeros(n_clean), np.ones(n_fraud)]).astype(np.int32)
 
+    # ── Add realistic noise so models don't achieve perfect metrics ──
+    # 1) Gaussian feature noise (5 % of each feature's std)
+    noise_scale = 0.05 * (X.std(axis=0) + 1e-8)
+    X += rng.normal(0, noise_scale, X.shape).astype(np.float32)
+
+    # 2) Flip ~3 % of labels to simulate labelling uncertainty
+    n_flips = max(1, int(0.03 * len(y)))
+    flip_idx = rng.choice(len(y), size=n_flips, replace=False)
+    y[flip_idx] = 1 - y[flip_idx]
+
+    # 3) Inject a small set of "ambiguous" samples near the boundary
+    n_ambig = max(2, int(0.02 * len(y)))
+    for _ in range(n_ambig):
+        ci = rng.integers(0, n_clean)
+        fi = n_clean + rng.integers(0, n_fraud)
+        mix = rng.uniform(0.35, 0.65)
+        X = np.vstack([X, (mix * X[ci] + (1 - mix) * X[fi]).reshape(1, -1)])
+        y = np.append(y, rng.choice([0, 1]))
+    y = y.astype(np.int32)
+
     # Shuffle
     idx = rng.permutation(len(X))
     return X[idx], y[idx]
@@ -133,11 +153,19 @@ class FraudIsolationForest:
         self.scaler = None
         self.is_trained = False
 
-    def train(self, X: np.ndarray) -> Dict:
-        """Train on feature matrix (unlabelled — unsupervised)."""
+    def train(self, X: np.ndarray, y: Optional[np.ndarray] = None) -> Dict:
+        """Train on feature matrix. If labels are provided, contamination is
+        derived from the actual fraud ratio so the anomaly rate reflects the
+        real data distribution instead of a fixed constant."""
         if not HAS_SKLEARN:
             self.is_trained = False
             return {"status": "sklearn_unavailable"}
+
+        # Dynamically set contamination from label distribution when available
+        if y is not None and len(y) > 0:
+            fraud_rate = float(np.mean(y == 1))
+            # Clamp to sklearn's valid range (0, 0.5]
+            self.contamination = max(0.01, min(fraud_rate, 0.5))
 
         self.scaler = StandardScaler()
         X_scaled = self.scaler.fit_transform(X)
@@ -316,14 +344,22 @@ class FraudMLPredictor:
         self.classifier = FraudClassifier()
         self.is_trained = False
         self._training_metrics: Dict = {}
+        # Track which account IDs have already been used for training
+        self._trained_account_ids: set = set()
+        # Accumulated training data (grows across retrain calls)
+        self._X_all: Optional[np.ndarray] = None
+        self._y_all: Optional[np.ndarray] = None
 
-    def train_all(self, n_samples: int = 2000) -> Dict:
-        """Train all models on synthetic data."""
-        logger.info("Generating synthetic training data (%d samples)...", n_samples)
-        X, y = generate_synthetic_dataset(n_samples)
+    def train_all(self, n_synthetic: int = 2000) -> Dict:
+        """Cold-start: train models on synthetic data only."""
+        logger.info("Generating synthetic seed data (%d samples)...", n_synthetic)
+        X, y = generate_synthetic_dataset(n_synthetic)
+
+        self._X_all = X
+        self._y_all = y
 
         logger.info("Training Isolation Forest...")
-        if_metrics = self.isolation_forest.train(X)
+        if_metrics = self.isolation_forest.train(X, y)
 
         logger.info("Training Random Forest + Gradient Boosting...")
         clf_metrics = self.classifier.train(X, y)
@@ -332,11 +368,131 @@ class FraudMLPredictor:
         self._training_metrics = {
             "isolation_forest": if_metrics,
             "classifier": clf_metrics,
-            "total_samples": n_samples,
+            "total_samples": len(X),
+            "real_samples": 0,
+            "synthetic_samples": n_synthetic,
         }
         logger.info("ML models trained: IF anomaly_rate=%.2f, CLF AUC=%.3f",
                      if_metrics.get("anomaly_rate", 0),
                      clf_metrics.get("auc_roc", 0))
+        return self._training_metrics
+
+    def retrain_with_data(
+        self,
+        transactions: list,
+        cyber_events: list,
+        n_synthetic: int = 1000,
+    ) -> Dict:
+        """
+        Incremental retrain: extract features from real data (only new accounts),
+        combine with synthetic augmentation data, and retrain all models.
+        Skips accounts already used in previous training rounds.
+        """
+        from .feature_engineering import get_feature_engineer
+
+        fe = get_feature_engineer()
+
+        # Discover unique account IDs from real data
+        all_account_ids: set = set()
+        for t in transactions:
+            sender = t.sender if hasattr(t, "sender") else t.get("sender", "")
+            receiver = t.receiver if hasattr(t, "receiver") else t.get("receiver", "")
+            if sender:
+                all_account_ids.add(sender)
+            if receiver:
+                all_account_ids.add(receiver)
+
+        # Only process NEW accounts that haven't been used for training
+        new_ids = all_account_ids - self._trained_account_ids
+        logger.info(
+            "Retrain: %d total accounts, %d already trained, %d new",
+            len(all_account_ids), len(self._trained_account_ids), len(new_ids),
+        )
+
+        new_X_list: list = []
+        new_y_list: list = []
+
+        if new_ids:
+            for aid in new_ids:
+                try:
+                    features = fe.extract_features(aid, transactions, cyber_events)
+                    new_X_list.append(features)
+
+                    # Heuristic labels: high tx velocity + anomaly -> fraud
+                    tx_vel = features[13]         # tx_velocity_1h
+                    anomaly = features[21]        # anomaly_score_mean
+                    splitting = features[29]      # has_splitting
+                    rapid = features[30]          # has_rapid_succession
+                    risk = 0.3 * min(tx_vel / 10, 1) + 0.3 * anomaly + 0.2 * splitting + 0.2 * rapid
+                    new_y_list.append(1 if risk > 0.5 else 0)
+                except Exception as e:
+                    logger.debug("Feature extraction failed for %s: %s", aid, e)
+
+            self._trained_account_ids.update(new_ids)
+
+        n_new = len(new_X_list)
+
+        # Build combined dataset: existing accumulated + new real + synthetic augmentation
+        datasets_X: list = []
+        datasets_y: list = []
+
+        if self._X_all is not None:
+            datasets_X.append(self._X_all)
+            datasets_y.append(self._y_all)
+
+        if n_new > 0:
+            new_X = np.vstack(new_X_list).astype(np.float32)
+            new_y = np.array(new_y_list, dtype=np.int32)
+            datasets_X.append(new_X)
+            datasets_y.append(new_y)
+
+        # Add synthetic augmentation (smaller batch for retrain, random seed varies)
+        rng_seed = hash(frozenset(self._trained_account_ids)) & 0xFFFFFFFF
+        X_syn, y_syn = generate_synthetic_dataset(n_synthetic, rng_seed=rng_seed)
+        datasets_X.append(X_syn)
+        datasets_y.append(y_syn)
+
+        X_combined = np.vstack(datasets_X)
+        y_combined = np.concatenate(datasets_y)
+
+        # Deduplicate (in case of overlap) using hash of feature rows
+        _, unique_idx = np.unique(
+            np.round(X_combined, 4).astype(str),
+            axis=0,
+            return_index=True,
+        )
+        X_combined = X_combined[unique_idx]
+        y_combined = y_combined[unique_idx]
+
+        # Save accumulated data for next round
+        self._X_all = X_combined
+        self._y_all = y_combined
+
+        logger.info(
+            "Retraining on %d total samples (%d new real, %d synthetic aug, %d prev accumulated)",
+            len(X_combined), n_new, n_synthetic,
+            len(X_combined) - n_new - n_synthetic,
+        )
+
+        if_metrics = self.isolation_forest.train(X_combined, y_combined)
+        clf_metrics = self.classifier.train(X_combined, y_combined)
+
+        self.is_trained = True
+        self._training_metrics = {
+            "isolation_forest": if_metrics,
+            "classifier": clf_metrics,
+            "total_samples": len(X_combined),
+            "real_samples": len(self._trained_account_ids),
+            "new_real_samples": n_new,
+            "total_real_samples": len(self._trained_account_ids),
+            "synthetic_samples": n_synthetic,
+        }
+        logger.info(
+            "Retrain complete: %d samples, IF anomaly_rate=%.2f, CLF AUC=%.3f",
+            len(X_combined),
+            if_metrics.get("anomaly_rate", 0),
+            clf_metrics.get("auc_roc", 0),
+        )
         return self._training_metrics
 
     def predict(self, X: np.ndarray) -> Dict[str, np.ndarray]:

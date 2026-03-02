@@ -104,6 +104,7 @@ export interface UserRiskResponse {
   cyber_score: number;
   financial_score: number;
   graph_score: number;
+  ml_score?: number;
   risk_level: string;
   explanation?: string;
   recommended_action?: string;
@@ -136,6 +137,8 @@ export interface SimulationResult {
     remaining_exposure?: number;
     remaining_downstream?: number;
     disruption_effectiveness?: number;
+    money_saved_by_surakshaflow?: number;
+    message?: string;
   };
 }
 

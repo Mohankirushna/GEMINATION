@@ -13,7 +13,7 @@ import {
   Building2,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { useState } from "react";
+import React, { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 
 interface NavItem {
@@ -39,15 +39,10 @@ const bankNav: NavItem[] = [
 
 const userNav: NavItem[] = [
   {
-    label: "My Risk",
+    label: "Dashboard",
     path: "/user",
-    icon: <UserCircle className="h-4 w-4" />,
-    exact: true,
-  },
-  {
-    label: "Transactions",
-    path: "/user/transactions",
-    icon: <CreditCard className="h-4 w-4" />,
+    icon: <LayoutDashboard className="h-4 w-4" />,
+    exact: false,
   },
 ];
 

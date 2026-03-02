@@ -137,14 +137,6 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="user/transactions"
-          element={
-            <ProtectedRoute requiredRole="end_user">
-              <UserDashboard />
-            </ProtectedRoute>
-          }
-        />
       </Route>
 
       {/* Catch-all */}

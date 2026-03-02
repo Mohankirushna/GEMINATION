@@ -24,5 +24,17 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            "vendor-react": ["react", "react-dom", "react-router-dom"],
+            "vendor-charts": ["recharts"],
+            "vendor-d3": ["d3"],
+            "vendor-firebase": ["firebase/app", "firebase/auth", "firebase/firestore"],
+          },
+        },
+      },
+    },
   };
 });

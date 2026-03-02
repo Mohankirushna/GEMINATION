@@ -1,13 +1,11 @@
-import { ReactNode } from "react";
+import { type ReactNode, type HTMLAttributes } from "react";
 import { cn } from "../lib/utils";
 
-interface GlassCardProps {
+type GlassCardProps = HTMLAttributes<HTMLDivElement> & {
   children: ReactNode;
-  className?: string;
   hover?: boolean;
   glow?: "gold" | "red" | "emerald" | "cyan";
-  onClick?: () => void;
-}
+};
 
 export default function GlassCard({
   children,
@@ -15,6 +13,7 @@ export default function GlassCard({
   hover = true,
   glow,
   onClick,
+  ...rest
 }: GlassCardProps) {
   const glowMap = {
     gold: "glow-gold",
@@ -25,6 +24,7 @@ export default function GlassCard({
 
   return (
     <div
+      {...rest}
       onClick={onClick}
       className={cn(
         hover ? "glass-card" : "glass-card-static",

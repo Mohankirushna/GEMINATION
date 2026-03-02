@@ -60,7 +60,9 @@ export default function AuthPage() {
       // Map Firebase errors to friendly messages
       if (msg.includes("Firebase not configured")) {
         // Should not happen anymore, but handle gracefully
-        setError("Service temporarily unavailable. Please use Demo Access below.");
+        setError(
+          "Service temporarily unavailable. Please use Demo Access below.",
+        );
       } else if (msg.includes("auth/email-already-in-use"))
         setError("This email is already registered. Try logging in.");
       else if (msg.includes("auth/invalid-credential"))
@@ -178,7 +180,7 @@ export default function AuthPage() {
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     placeholder="Priya Sharma"
-                    className="auth-input pl-10"
+                    className="auth-input auth-input-pl"
                     required={mode === "signup"}
                   />
                 </div>
@@ -197,7 +199,7 @@ export default function AuthPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="auth-input pl-10"
+                  className="auth-input auth-input-pl"
                   required
                   autoComplete="email"
                 />
@@ -216,7 +218,7 @@ export default function AuthPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="auth-input pl-10 pr-10"
+                  className="auth-input auth-input-pl-pr"
                   required
                   minLength={6}
                   autoComplete={

@@ -272,3 +272,121 @@ export const analyzeEmail = (emailContent: string, senderEmail: string = "", sub
     method: "POST",
     body: JSON.stringify({ email_content: emailContent, sender_email: senderEmail, subject }),
   });
+
+/* ── Account Freeze ──────────────────────────────────────── */
+export interface FreezeResult {
+  success: boolean;
+  account_id: string;
+  status: string;
+  money_saved: number;
+  message: string;
+  downstream_protected: number;
+  disruption_effectiveness: number;
+}
+
+export const freezeAccount = (accountId: string) =>
+  request<FreezeResult>(`/account/freeze/${accountId}`, { method: "POST" });
+
+export const unfreezeAccount = (accountId: string) =>
+  request<{ success: boolean; account_id: string; status: string }>(
+    `/account/unfreeze/${accountId}`,
+    { method: "POST" },
+  );
+
+export const getFrozenAccounts = () =>
+  request<{ frozen_accounts: string[]; count: number }>("/account/frozen");
+
+/* ── Session Management ──────────────────────────────────── */
+export interface SessionInfo {
+  session_id: string;
+  started_at: string;
+  message?: string;
+  history_sessions?: number;
+}
+
+export interface SessionHistory {
+  period: string;
+  current_session: {
+    session_id: string;
+    started_at: string;
+    status: string;
+    alert_count: number;
+    high_risk_count: number;
+  };
+  past_sessions: Array<{
+    session_id: string;
+    started_at: string;
+    ended_at: string;
+    alert_count: number;
+    high_risk_count: number;
+    alerts?: any[];
+  }>;
+  total_historical_alerts: number;
+}
+
+export const startSession = () =>
+  request<SessionInfo>("/session/start", { method: "POST" });
+
+export const getSessionHistory = (period: string = "all") =>
+  request<SessionHistory>(`/session/history?period=${period}`);
+
+export const getCurrentSession = () =>
+  request<{ session_id: string; started_at: string; frozen_accounts: string[] }>(
+    "/session/current",
+  );
+
+/* ── ML Model Status & Predictions ───────────────────────── */
+export interface MLModelStatus {
+  ml_enabled: boolean;
+  fraud_predictor?: {
+    trained: boolean;
+    metrics: {
+      isolation_forest?: { status: string; n_samples: number; anomaly_rate: number };
+      classifier?: { status: string; n_train: number; n_test: number; auc_roc: number };
+      total_samples?: number;
+      real_samples?: number;
+      synthetic_samples?: number;
+      new_real_samples?: number;
+      total_real_samples?: number;
+    };
+  };
+  temporal_gnn?: {
+    trained: boolean;
+    metrics: {
+      status: string;
+      n_samples: number;
+      accuracy: number;
+      classes: string[];
+      real_nodes?: number;
+    };
+  };
+  error?: string;
+}
+
+export interface MLPrediction {
+  account_id: string;
+  anomaly_score: number;
+  fraud_probability: number;
+  combined_score: number;
+  feature_count: number;
+}
+
+export interface MLGraphClassification {
+  classifications: Record<string, string>;
+  counts: Record<string, number>;
+  total_nodes: number;
+}
+
+export const fetchMLStatus = () => request<MLModelStatus>("/ml/status");
+
+export const fetchMLPrediction = (accountId: string) =>
+  request<MLPrediction>(`/ml/predict/${accountId}`, { method: "POST" });
+
+export const fetchMLGraphClassification = () =>
+  request<MLGraphClassification>("/ml/graph-classification");
+
+export const retrainMLModels = () =>
+  request<{ success: boolean; fraud_predictor: any; temporal_gnn: any }>(
+    "/ml/retrain",
+    { method: "POST" },
+  );

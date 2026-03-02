@@ -142,7 +142,33 @@ export default function NetworkGraph() {
 
     // Deep clone data to avoid mutation issues
     const nodes = graphData.nodes.map((n) => ({ ...n }));
-    const edges = graphData.edges.map((e) => ({ ...e }));
+    const edges: Array<GraphEdge & { source: any; target: any }> = graphData.edges.map((e) => ({ ...e } as any));
+
+    // ── Adaptive force parameters based on node count ──
+    const nodeCount = nodes.length;
+    const linkDist = nodeCount > 30 ? 280 : nodeCount > 15 ? 200 : 140;
+    const chargeStr = nodeCount > 30 ? -1800 : nodeCount > 15 ? -1100 : -600;
+    const collideR = nodeCount > 30 ? 65 : nodeCount > 15 ? 48 : 32;
+
+    // ── Pre-position nodes in a spiral/community layout to reduce chaos ──
+    const communityMap = new Map<number, number>();
+    let cIdx = 0;
+    nodes.forEach((n: any) => {
+      const comm = n.community ?? 0;
+      if (!communityMap.has(comm)) communityMap.set(comm, cIdx++);
+    });
+    const totalCommunities = communityMap.size || 1;
+
+    nodes.forEach((n: any, i: number) => {
+      const comm = communityMap.get(n.community ?? 0) ?? 0;
+      // Place each community in a different sector around the center
+      const sectorAngle = (comm / totalCommunities) * 2 * Math.PI;
+      const jitter = (i / nodeCount) * Math.PI * 0.6; // spread within sector
+      const baseRadius = Math.min(width, height) * 0.28;
+      const radius = baseRadius + (i % 5) * 25;
+      n.x = width / 2 + radius * Math.cos(sectorAngle + jitter);
+      n.y = height / 2 + radius * Math.sin(sectorAngle + jitter);
+    });
 
     const simulation = d3
       .forceSimulation(nodes as d3.SimulationNodeDatum[])
@@ -151,11 +177,14 @@ export default function NetworkGraph() {
         d3
           .forceLink(edges)
           .id((d: any) => d.id)
-          .distance(120),
+          .distance(linkDist),
       )
-      .force("charge", d3.forceManyBody().strength(-500))
+      .force("charge", d3.forceManyBody().strength(chargeStr))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide().radius(30));
+      .force("collision", d3.forceCollide().radius(collideR))
+      .force("x", d3.forceX(width / 2).strength(0.04))
+      .force("y", d3.forceY(height / 2).strength(0.04))
+      .alphaDecay(0.02);
 
     // Edges
     const link = g
@@ -208,7 +237,7 @@ export default function NetworkGraph() {
     // Glow circle
     nodeGroup
       .append("circle")
-      .attr("r", 18)
+      .attr("r", nodeCount > 25 ? 14 : 18)
       .attr("fill", (d: any) => nodeGlow(d))
       .attr("opacity", 0.4)
       .attr("filter", "url(#node-glow)");
@@ -216,7 +245,10 @@ export default function NetworkGraph() {
     // Inner circle
     nodeGroup
       .append("circle")
-      .attr("r", (d: any) => (d.type === "device" ? 8 : 11))
+      .attr("r", (d: any) => {
+        const base = d.type === "device" ? 8 : 11;
+        return nodeCount > 25 ? base * 0.75 : base;
+      })
       .attr("fill", (d: any) => nodeColor(d))
       .attr("stroke", "rgba(255,255,255,0.2)")
       .attr("stroke-width", 1.5);
@@ -225,10 +257,10 @@ export default function NetworkGraph() {
     nodeGroup
       .append("text")
       .text((d: any) => d.label || d.node_label || d.id)
-      .attr("dx", 16)
+      .attr("dx", nodeCount > 25 ? 12 : 16)
       .attr("dy", 4)
       .attr("fill", "rgba(255,255,255,0.5)")
-      .attr("font-size", "10px")
+      .attr("font-size", nodeCount > 25 ? "8px" : "10px")
       .attr("font-family", "var(--font-sans)");
 
     // Click to select
@@ -313,9 +345,12 @@ export default function NetworkGraph() {
               </span>
             )}
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-sm text-slate-400 mt-1 flex items-center gap-2">
             Visualizing transaction flows and device connections to identify
             mule rings.
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold uppercase">
+              🤖 Powered by PageRank · Louvain · Temporal GNN
+            </span>
             {lastUpdate && <span className="ml-2 text-slate-600">Last update: {lastUpdate}</span>}
           </p>
         </div>
@@ -459,6 +494,53 @@ export default function NetworkGraph() {
                       </span>
                     </div>
                   )}
+                </div>
+
+                {/* ── ML / AI Detection Badges ── */}
+                <div className="space-y-2 pt-3 border-t border-white/5">
+                  <p className="text-[10px] font-semibold text-purple-400 uppercase tracking-wide">AI / ML Analysis</p>
+
+                  {(selected as any).ml_detected ? (
+                    <div className="space-y-1.5">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        🤖 ML Classified
+                      </span>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500">ML Label</span>
+                        <span className="capitalize font-semibold" style={{ color: nodeColor(selected) }}>
+                          {selected.node_label || selected.label || "—"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500">Model</span>
+                        <span className="text-purple-300 text-[10px]">Temporal GNN</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-500/10 text-slate-400 border border-slate-500/20">
+                        Rule-based
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Graph intelligence metrics */}
+                  {(selected.pagerank != null || selected.betweenness_centrality != null) && (
+                    <div className="mt-2 p-2 rounded-lg bg-cyan-500/5 border border-cyan-500/10">
+                      <p className="text-[9px] text-cyan-400 font-semibold mb-1">Graph Intelligence (NetworkX)</p>
+                      <p className="text-[9px] text-slate-500">
+                        PageRank + Betweenness + Louvain Community Detection
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Risk scoring breakdown */}
+                  <div className="mt-2 p-2 rounded-lg bg-violet-500/5 border border-violet-500/10">
+                    <p className="text-[9px] text-violet-400 font-semibold mb-1">Unified Risk Score</p>
+                    <p className="text-[9px] text-slate-500">
+                      Cyber(30%) + Financial(25%) + Graph(20%) + ML(25%)
+                    </p>
+                  </div>
                 </div>
               </div>
             ) : (

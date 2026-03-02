@@ -1,3 +1,4 @@
+import React from "react";
 import { cn } from "../lib/utils";
 
 interface SkeletonProps {
@@ -22,7 +23,7 @@ export default function LoadingSkeleton({
   );
 }
 
-export function CardSkeleton({ className }: { className?: string }) {
+export function CardSkeleton({ className, ...rest }: { className?: string } & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div className={cn("glass-card-static p-6 space-y-4", className)}>
       <div className="flex items-center gap-3">

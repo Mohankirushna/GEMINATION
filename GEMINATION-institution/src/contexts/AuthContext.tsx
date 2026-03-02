@@ -203,7 +203,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // non-critical — dashboard still works with demo data
       }
-    } catch (e: any) {
+      // Explicitly set profile state to avoid onAuthStateChanged race condition
+      const newProfile: UserProfile = {
+        uid: cred.user.uid,
+        email,
+        displayName,
+        role,
+        linkedAccounts: [],
+        photoURL: cred.user.photoURL ?? undefined,
+      };
+      setState((s) => ({ ...s, user: cred.user, profile: newProfile, loading: false, error: null }));    } catch (e: any) {
       setState((s) => ({ ...s, loading: false, error: e.message }));
       throw e;
     }

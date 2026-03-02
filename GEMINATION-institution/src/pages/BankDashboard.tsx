@@ -4,7 +4,7 @@
  * Unified risk factor updated dynamically; Gemini explains when > 0.7.
  */
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   AreaChart,
   Area,
@@ -37,6 +37,15 @@ import {
   X,
   Clock,
   Radio,
+  Snowflake,
+  History,
+  Calendar,
+  IndianRupee,
+  Cpu,
+  Layers,
+  GitBranch,
+  Sparkles,
+  RefreshCw,
 } from "lucide-react";
 
 import GlassCard from "../components/GlassCard";
@@ -53,8 +62,15 @@ import {
   generateSTR,
   getSTRDownloadUrl,
   runSimulation,
+  freezeAccount,
+  startSession,
+  getSessionHistory,
+  fetchMLStatus,
+  fetchMLGraphClassification,
+  retrainMLModels,
 } from "../services/api";
 import type { Alert, SimulationResult, GeminiExplanation } from "../types";
+import type { FreezeResult, SessionHistory, MLModelStatus, MLGraphClassification } from "../services/api";
 
 /* ────────────── helpers ────────────── */
 
@@ -83,6 +99,247 @@ function formatTime(ts: string) {
   }
 }
 
+/* ━━━━━━ MEMOISED ML PANEL (does not re-render on simulation ticks) ━━━━━━ */
+
+const MLInsightsPanel = React.memo(function MLInsightsPanel({
+  mlStatus,
+  mlGraphClass,
+  mlRetraining,
+  onRetrain,
+  onLoadClassification,
+}: {
+  mlStatus: MLModelStatus | null;
+  mlGraphClass: MLGraphClassification | null;
+  mlRetraining: boolean;
+  onRetrain: () => void;
+  onLoadClassification: () => void;
+}) {
+  return (
+    <GlassCard hover={false} className="border border-purple-500/20">
+      <div className="p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <Cpu className="w-4 h-4 text-purple-400" />
+            ML &amp; AI Models — Live Status
+            {mlStatus ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase font-bold">
+                {mlStatus.ml_enabled ? "Models Online" : "Fallback Mode"}
+              </span>
+            ) : (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-500/20 text-gray-400 border border-gray-500/30 uppercase font-bold animate-pulse">
+                Loading…
+              </span>
+            )}
+          </h3>
+          <button
+            onClick={onRetrain}
+            disabled={mlRetraining}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 text-xs border border-purple-500/20 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`w-3 h-3 ${mlRetraining ? "animate-spin" : ""}`} />
+            {mlRetraining ? "Retraining…" : "Retrain Models"}
+          </button>
+        </div>
+
+        {/* Model Cards Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* 1. Isolation Forest */}
+          <div className="p-3 rounded-xl bg-gradient-to-br from-violet-500/10 to-purple-900/10 border border-violet-500/20 space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-violet-500/20">
+                <Layers className="w-3.5 h-3.5 text-violet-400" />
+              </div>
+              <span className="text-xs font-semibold text-violet-300">Isolation Forest</span>
+            </div>
+            <p className="text-[10px] text-gray-400">Unsupervised anomaly detection — 200 tree ensemble</p>
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-gray-500">Status</span>
+              <span className={`font-semibold ${mlStatus?.fraud_predictor?.trained ? "text-emerald-400" : "text-amber-400"}`}>
+                {mlStatus?.fraud_predictor?.trained ? "✓ Trained" : mlStatus ? "Fallback" : "—"}
+              </span>
+            </div>
+            {mlStatus?.fraud_predictor?.metrics?.isolation_forest && (
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="text-gray-500">Anomaly Rate</span>
+                <span className="text-violet-300 font-mono">
+                  {((mlStatus.fraud_predictor.metrics.isolation_forest.anomaly_rate ?? 0) * 100).toFixed(1)}%
+                </span>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-gray-500">Samples</span>
+              <span className="text-gray-300 font-mono">
+                {mlStatus?.fraud_predictor?.metrics?.isolation_forest?.n_samples ?? "—"}
+              </span>
+            </div>
+            {(mlStatus?.fraud_predictor?.metrics?.real_samples ?? 0) > 0 && (
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="text-gray-500">Data Mix</span>
+                <span className="text-violet-200 font-mono text-[9px]">
+                  {mlStatus?.fraud_predictor?.metrics?.real_samples} real + {mlStatus?.fraud_predictor?.metrics?.synthetic_samples} syn
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* 2. Random Forest + Gradient Boosting */}
+          <div className="p-3 rounded-xl bg-gradient-to-br from-cyan-500/10 to-blue-900/10 border border-cyan-500/20 space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-cyan-500/20">
+                <GitBranch className="w-3.5 h-3.5 text-cyan-400" />
+              </div>
+              <span className="text-xs font-semibold text-cyan-300">RF + GB Ensemble</span>
+            </div>
+            <p className="text-[10px] text-gray-400">Supervised fraud classifier — RF (200 trees) + GB (150 trees)</p>
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-gray-500">Status</span>
+              <span className={`font-semibold ${mlStatus?.fraud_predictor?.trained ? "text-emerald-400" : "text-amber-400"}`}>
+                {mlStatus?.fraud_predictor?.trained ? "✓ Trained" : mlStatus ? "Fallback" : "—"}
+              </span>
+            </div>
+            {mlStatus?.fraud_predictor?.metrics?.classifier && (
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="text-gray-500">AUC-ROC</span>
+                <span className="text-cyan-300 font-mono">
+                  {(mlStatus.fraud_predictor.metrics.classifier.auc_roc ?? 0).toFixed(3)}
+                </span>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-gray-500">Train / Test</span>
+              <span className="text-gray-300 font-mono">
+                {mlStatus?.fraud_predictor?.metrics?.classifier
+                  ? `${mlStatus.fraud_predictor.metrics.classifier.n_train} / ${mlStatus.fraud_predictor.metrics.classifier.n_test}`
+                  : "—"}
+              </span>
+            </div>
+            {(mlStatus?.fraud_predictor?.metrics?.new_real_samples ?? 0) > 0 && (
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="text-gray-500">New Real</span>
+                <span className="text-cyan-200 font-mono text-[9px]">
+                  +{mlStatus?.fraud_predictor?.metrics?.new_real_samples} accounts
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* 3. Temporal GNN Classifier */}
+          <div className="p-3 rounded-xl bg-gradient-to-br from-amber-500/10 to-orange-900/10 border border-amber-500/20 space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-amber-500/20">
+                <Network className="w-3.5 h-3.5 text-amber-400" />
+              </div>
+              <span className="text-xs font-semibold text-amber-300">Temporal GNN</span>
+            </div>
+            <p className="text-[10px] text-gray-400">Graph neural network — mule &amp; kingpin node classification</p>
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-gray-500">Status</span>
+              <span className={`font-semibold ${mlStatus?.temporal_gnn?.trained ? "text-emerald-400" : "text-amber-400"}`}>
+                {mlStatus?.temporal_gnn?.trained ? "✓ Trained" : mlStatus ? "Fallback" : "—"}
+              </span>
+            </div>
+            {mlStatus?.temporal_gnn?.metrics && (
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="text-gray-500">Accuracy</span>
+                <span className="text-amber-300 font-mono">
+                  {((mlStatus.temporal_gnn.metrics.accuracy ?? 0) * 100).toFixed(1)}%
+                </span>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-gray-500">Samples</span>
+              <span className="text-gray-300 font-mono">
+                {mlStatus?.temporal_gnn?.metrics?.n_samples ?? "—"}
+              </span>
+            </div>
+            {(mlStatus?.temporal_gnn?.metrics?.real_nodes ?? 0) > 0 && (
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="text-gray-500">Real Nodes</span>
+                <span className="text-amber-200 font-mono text-[9px]">
+                  {mlStatus?.temporal_gnn?.metrics?.real_nodes} from live graph
+                </span>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-gray-500">Classes</span>
+              <span className="text-gray-300 text-[9px]">
+                {mlStatus?.temporal_gnn?.metrics?.classes?.join(" · ") ?? "—"}
+              </span>
+            </div>
+          </div>
+
+          {/* 4. Gemini AI */}
+          <div className="p-3 rounded-xl bg-gradient-to-br from-emerald-500/10 to-teal-900/10 border border-emerald-500/20 space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-emerald-500/20">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              </div>
+              <span className="text-xs font-semibold text-emerald-300">Gemini 2.5 Flash</span>
+            </div>
+            <p className="text-[10px] text-gray-400">LLM-powered alert explanation, SMS &amp; email phishing analysis</p>
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-gray-500">Status</span>
+              <span className="text-emerald-400 font-semibold">✓ Active</span>
+            </div>
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-gray-500">Trigger</span>
+              <span className="text-gray-300">Risk &gt; 70%</span>
+            </div>
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-gray-500">Capabilities</span>
+              <span className="text-gray-300 text-[9px]">AML · STR · SMS · Email</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ML Graph Classification Summary — loaded on demand */}
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-white/5">
+          <span className="text-xs text-gray-500">Graph ML Classification:</span>
+          {mlGraphClass ? (
+            <>
+              {Object.entries(mlGraphClass.counts).map(([label, count]) => (
+                <span
+                  key={label}
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                    label === "kingpin"
+                      ? "bg-red-500/20 text-red-300"
+                      : label === "mule"
+                        ? "bg-amber-500/20 text-amber-300"
+                        : label === "victim"
+                          ? "bg-emerald-500/20 text-emerald-300"
+                          : "bg-gray-500/20 text-gray-400"
+                  }`}
+                >
+                  {label}: {count}
+                </span>
+              ))}
+              <span className="text-[10px] text-gray-600 ml-auto">
+                {mlGraphClass.total_nodes} nodes classified
+              </span>
+            </>
+          ) : (
+            <button
+              onClick={onLoadClassification}
+              className="text-[10px] px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 border border-amber-500/20 transition-colors"
+            >
+              Run Classification
+            </button>
+          )}
+        </div>
+
+        {/* Risk Scoring Formula */}
+        <div className="pt-2 border-t border-white/5">
+          <p className="text-[10px] text-gray-500 flex items-center gap-1">
+            <Cpu className="w-3 h-3" />
+            Unified Score = 0.30 × Cyber + 0.25 × Financial + 0.20 × Graph + 0.25 × ML
+            <span className="text-purple-400 ml-1">(when ML available)</span>
+          </p>
+        </div>
+      </div>
+    </GlassCard>
+  );
+});
+
 /* ━━━━━━━━━━━━━ COMPONENT ━━━━━━━━━━━━━ */
 
 export default function BankDashboard() {
@@ -101,6 +358,53 @@ export default function BankDashboard() {
   const [twinResult, setTwinResult] = useState<SimulationResult | null>(null);
   const [twinLoading, setTwinLoading] = useState(false);
   const [showGeminiPanel, setShowGeminiPanel] = useState(true);
+
+  /* ── Session & Filter state ── */
+  const [timeFilter, setTimeFilter] = useState<"all" | "daily" | "weekly" | "monthly">("all");
+  const [sessionId, setSessionId] = useState("");
+  const [sessionStart, setSessionStart] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyData, setHistoryData] = useState<SessionHistory | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [freezeLoading, setFreezeLoading] = useState(false);
+  const [freezeResult, setFreezeResult] = useState<FreezeResult | null>(null);
+
+  /* ── ML Model Status ── */
+  const [mlStatus, setMlStatus] = useState<MLModelStatus | null>(null);
+  const [mlGraphClass, setMlGraphClass] = useState<MLGraphClassification | null>(null);
+  const [mlRetraining, setMlRetraining] = useState(false);
+
+  /* ── Start session on mount ── */
+  useEffect(() => {
+    startSession()
+      .then((info) => {
+        setSessionId(info.session_id);
+        setSessionStart(info.started_at);
+      })
+      .catch(() => {
+        setSessionId(`session_${Date.now().toString(36)}`);
+        setSessionStart(new Date().toISOString());
+      });
+    // Fetch ML model status (lightweight) — graph classification deferred
+    fetchMLStatus().then(setMlStatus).catch(() => {});
+  }, []);
+
+  const handleLoadClassification = useCallback(async () => {
+    try {
+      const gc = await fetchMLGraphClassification();
+      setMlGraphClass(gc);
+    } catch {}
+  }, []);
+
+  const handleRetrain = useCallback(async () => {
+    setMlRetraining(true);
+    try {
+      await retrainMLModels();
+      const status = await fetchMLStatus();
+      setMlStatus(status);
+    } catch {}
+    setMlRetraining(false);
+  }, []);
 
   /* ── Derived data ── */
   const currentEvent = sim.currentEvent;
@@ -237,6 +541,63 @@ export default function BankDashboard() {
       }));
   }, [sim.riskTrend, sim.eventHistory]);
 
+  /* ── Time-filtered alerts ── */
+  const filteredAlerts = useMemo(() => {
+    if (timeFilter === "all") return sim.liveAlerts;
+    const now = Date.now();
+    const cutoffs: Record<string, number> = {
+      daily: 24 * 60 * 60 * 1000,
+      weekly: 7 * 24 * 60 * 60 * 1000,
+      monthly: 30 * 24 * 60 * 60 * 1000,
+    };
+    const cutoff = now - cutoffs[timeFilter];
+    return sim.liveAlerts.filter((a: any) => {
+      const ts = new Date(a.timestamp || a.created_at).getTime();
+      return ts >= cutoff;
+    });
+  }, [sim.liveAlerts, timeFilter]);
+
+  /* ── Freeze account handler ── */
+  const handleFreeze = useCallback(async () => {
+    if (!selectedAlert) return;
+    setFreezeLoading(true);
+    setFreezeResult(null);
+    try {
+      const accountId =
+        selectedAlert.accounts_flagged?.[0] || selectedAlert.accountId;
+      const res = await freezeAccount(accountId);
+      setFreezeResult(res);
+    } catch {
+      setFreezeResult({
+        success: false,
+        account_id: selectedAlert.accountId,
+        status: "error",
+        money_saved: 0,
+        message: "Failed to freeze account. Please try again.",
+        downstream_protected: 0,
+        disruption_effectiveness: 0,
+      });
+    } finally {
+      setFreezeLoading(false);
+    }
+  }, [selectedAlert]);
+
+  /* ── Session history handler ── */
+  const loadHistory = useCallback(
+    async (period: string = timeFilter) => {
+      setHistoryLoading(true);
+      try {
+        const data = await getSessionHistory(period);
+        setHistoryData(data);
+      } catch {
+        setHistoryData(null);
+      } finally {
+        setHistoryLoading(false);
+      }
+    },
+    [timeFilter]
+  );
+
   /* ── Loading state ── */
   if (!currentEvent && sim.totalTicks === 0) {
     return (
@@ -303,6 +664,132 @@ export default function BankDashboard() {
           </button>
         </div>
       </div>
+
+      {/* ═══════ SESSION & FILTER BAR ═══════ */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-500 flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            Session: <span className="text-cyan-400 font-mono">{sessionId.slice(0, 16) || "—"}</span>
+          </span>
+          {sessionStart && (
+            <span className="text-xs text-gray-600">
+              Started {new Date(sessionStart).toLocaleTimeString("en-IN")}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Time filter */}
+          <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-0.5">
+            {(["daily", "weekly", "monthly", "all"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setTimeFilter(f)}
+                className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                  timeFilter === f
+                    ? "bg-cyan-500/20 text-cyan-300 font-medium"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                {f === "all" ? "All Time" : f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {/* History button */}
+          <button
+            onClick={() => {
+              setShowHistory(!showHistory);
+              if (!showHistory) loadHistory();
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors text-xs text-gray-300"
+          >
+            <History className="w-3.5 h-3.5" />
+            History
+          </button>
+        </div>
+      </div>
+
+      {/* ═══════ HISTORY PANEL ═══════ */}
+      {showHistory && (
+        <GlassCard hover={false}>
+          <div className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+                <History className="w-4 h-4 text-cyan-400" />
+                Session History
+              </h3>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="text-gray-500 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {historyLoading ? (
+              <p className="text-xs text-gray-500 text-center py-4">Loading history…</p>
+            ) : historyData ? (
+              <div className="space-y-3">
+                {/* Current session summary */}
+                <div className="p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-semibold text-cyan-300">
+                      Current Session
+                    </span>
+                    <span className="badge badge-high text-[10px]">ACTIVE</span>
+                  </div>
+                  <div className="flex gap-4 text-xs text-gray-400">
+                    <span>Alerts: <strong className="text-white">{historyData.current_session.alert_count}</strong></span>
+                    <span>High Risk: <strong className="text-red-400">{historyData.current_session.high_risk_count}</strong></span>
+                  </div>
+                </div>
+
+                {/* Past sessions */}
+                {historyData.past_sessions.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-500">Past Sessions ({historyData.past_sessions.length})</p>
+                    {historyData.past_sessions.map((session, i) => (
+                      <div
+                        key={session.session_id || i}
+                        className="p-2 rounded bg-white/5 text-xs flex items-center justify-between"
+                      >
+                        <div>
+                          <span className="text-gray-300 font-mono">
+                            {session.session_id}
+                          </span>
+                          <span className="text-gray-600 ml-2">
+                            {new Date(session.ended_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="flex gap-3 text-gray-400">
+                          <span>{session.alert_count} alerts</span>
+                          <span className="text-red-400">
+                            {session.high_risk_count} high risk
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-600 text-center py-2">
+                    No past sessions recorded yet.
+                  </p>
+                )}
+
+                <div className="text-xs text-gray-500 text-right">
+                  Total historical alerts: {historyData.total_historical_alerts}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-600 text-center py-4">
+                No history data available.
+              </p>
+            )}
+          </div>
+        </GlassCard>
+      )}
 
       {/* ═══════ LIVE EVENT BANNER ═══════ */}
       {currentEvent && (
@@ -611,6 +1098,15 @@ export default function BankDashboard() {
         </GlassCard>
       </div>
 
+      {/* ═══════ ML / AI INSIGHTS PANEL ═══════ */}
+      <MLInsightsPanel
+        mlStatus={mlStatus}
+        mlGraphClass={mlGraphClass}
+        mlRetraining={mlRetraining}
+        onRetrain={handleRetrain}
+        onLoadClassification={handleLoadClassification}
+      />
+
       {/* ═══════ ALERTS TABLE ═══════ */}
       <GlassCard hover={false}>
         <div className="p-4">
@@ -618,11 +1114,16 @@ export default function BankDashboard() {
             <ShieldAlert className="w-4 h-4 text-red-400" />
             Live Alerts Feed
             <span className="ml-auto text-xs text-gray-500">
-              {sim.liveAlerts.length} alerts
+              {filteredAlerts.length} alerts
+              {timeFilter !== "all" && (
+                <span className="text-gray-600 ml-1">
+                  ({timeFilter})
+                </span>
+              )}
             </span>
           </h3>
 
-          {sim.liveAlerts.length === 0 ? (
+          {filteredAlerts.length === 0 ? (
             <p className="text-sm text-gray-500 text-center py-8">
               Waiting for suspicious activity…
             </p>
@@ -640,7 +1141,7 @@ export default function BankDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {sim.liveAlerts.map((alert: any, idx: number) => {
+                  {filteredAlerts.map((alert: any, idx: number) => {
                     const score =
                       alert.unifiedRiskScore ?? alert.unified_risk_score ?? 0;
                     const isNew = idx === 0 && sim.isRunning;
@@ -842,7 +1343,59 @@ export default function BankDashboard() {
                     <Network className="w-3.5 h-3.5" />
                     {twinLoading ? "Simulating…" : "Digital Twin"}
                   </button>
+
+                  {/* Emergency Freeze — for high risk alerts */}
+                  {selectedAlert.unifiedRiskScore >= 0.6 && (
+                    <button
+                      onClick={handleFreeze}
+                      disabled={freezeLoading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 text-xs disabled:opacity-50 border border-red-500/30"
+                    >
+                      <Snowflake className="w-3.5 h-3.5" />
+                      {freezeLoading ? "Freezing…" : "🚨 Freeze Account"}
+                    </button>
+                  )}
                 </div>
+
+                {/* Freeze result */}
+                {freezeResult && (
+                  <div
+                    className={`p-3 rounded-lg border space-y-1 ${
+                      freezeResult.success
+                        ? "bg-emerald-500/10 border-emerald-500/20"
+                        : "bg-red-500/10 border-red-500/20"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Snowflake
+                        className={`w-4 h-4 ${
+                          freezeResult.success ? "text-emerald-400" : "text-red-400"
+                        }`}
+                      />
+                      <span
+                        className={`text-xs font-semibold ${
+                          freezeResult.success ? "text-emerald-300" : "text-red-300"
+                        }`}
+                      >
+                        {freezeResult.success ? "Account Frozen" : "Freeze Failed"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-300">{freezeResult.message}</p>
+                    {freezeResult.success && freezeResult.money_saved > 0 && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <IndianRupee className="w-3 h-3 text-emerald-400" />
+                        <span className="text-xs text-emerald-300 font-bold">
+                          ₹{freezeResult.money_saved.toLocaleString()} saved by SurakshaFlow
+                        </span>
+                      </div>
+                    )}
+                    {freezeResult.downstream_protected > 0 && (
+                      <p className="text-xs text-gray-400">
+                        {freezeResult.downstream_protected} downstream accounts protected
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Gemini detail result */}
                 {geminiResult && (
@@ -916,6 +1469,24 @@ export default function BankDashboard() {
                         </p>
                       </div>
                     </div>
+
+                    {/* Money saved by SurakshaFlow highlight */}
+                    {twinResult.optimal_action.money_saved_by_surakshaflow != null &&
+                      twinResult.optimal_action.money_saved_by_surakshaflow > 0 && (
+                        <div className="mt-2 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-2">
+                          <IndianRupee className="w-4 h-4 text-emerald-400" />
+                          <div>
+                            <p className="text-xs text-emerald-300 font-bold">
+                              ₹{twinResult.optimal_action.money_saved_by_surakshaflow.toLocaleString()} saved by SurakshaFlow
+                            </p>
+                            {twinResult.optimal_action.message && (
+                              <p className="text-[10px] text-gray-400 mt-0.5">
+                                {twinResult.optimal_action.message}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
                   </div>
                 )}
               </>
