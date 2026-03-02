@@ -5,11 +5,13 @@ Main entry point for the backend API server.
 from __future__ import annotations
 
 import io
+import logging
+import sys
 import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -40,6 +42,23 @@ from .data_generator.scenarios import (
     get_risk_trend_data,
 )
 
+# ── Logging Setup ─────────────────────────────────────────────
+
+LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format=LOG_FORMAT,
+    datefmt=DATE_FORMAT,
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+    ],
+)
+
+logger = logging.getLogger("surakshaflow")
+logger.setLevel(logging.INFO)
+
 # ── App Initialization ────────────────────────────────────────
 
 app = FastAPI(
@@ -56,6 +75,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ── Request Logging Middleware ────────────────────────────────
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log every incoming request and its response status."""
+    import time
+    start = time.perf_counter()
+    logger.info("→ %s %s", request.method, request.url.path)
+    try:
+        response = await call_next(request)
+        elapsed = (time.perf_counter() - start) * 1000
+        logger.info(
+            "← %s %s → %d (%.1fms)",
+            request.method,
+            request.url.path,
+            response.status_code,
+            elapsed,
+        )
+        return response
+    except Exception as exc:
+        elapsed = (time.perf_counter() - start) * 1000
+        logger.error(
+            "✗ %s %s → ERROR (%.1fms): %s",
+            request.method,
+            request.url.path,
+            elapsed,
+            str(exc),
+        )
+        raise
+
 # ── In-memory demo data store (used when Firestore is unavailable) ──
 _demo_data: dict = {}
 
@@ -65,6 +115,7 @@ def _ensure_demo_data():
     if _demo_data.get("loaded"):
         return
 
+    logger.info("Loading demo data into memory...")
     _demo_data["users"] = {u.id: u for u in generate_users()}
     _demo_data["cyber_events"] = generate_cyber_events()
     _demo_data["transactions"] = generate_financial_transactions()
@@ -72,11 +123,22 @@ def _ensure_demo_data():
     _demo_data["risk_events"] = {r.account_id: r for r in generate_risk_events()}
     _demo_data["risk_trend"] = get_risk_trend_data()
     _demo_data["loaded"] = True
+    logger.info(
+        "Demo data loaded: %d users, %d alerts, %d cyber events, %d transactions, %d risk events",
+        len(_demo_data["users"]),
+        len(_demo_data["alerts"]),
+        len(_demo_data["cyber_events"]),
+        len(_demo_data["transactions"]),
+        len(_demo_data["risk_events"]),
+    )
 
 
 @app.on_event("startup")
 async def startup():
+    logger.info("SurakshaFlow API starting up...")
+    logger.info("Features — Gemini: %s | Digital Twin: %s | Graph: %s", ENABLE_GEMINI, ENABLE_DIGITAL_TWIN, ENABLE_GRAPH_ANALYTICS)
     _ensure_demo_data()
+    logger.info("SurakshaFlow API ready on %s:%s", HOST, PORT)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -198,6 +260,7 @@ async def bank_alert_action(alert_id: str, req: ActionRequest):
 async def user_risk(uid: str):
     """Get user's current risk score and breakdown."""
     _ensure_demo_data()
+    logger.info("User risk lookup for uid=%s", uid)
 
     # Find risk event for this user's account
     user = _demo_data["users"].get(uid)
@@ -205,6 +268,7 @@ async def user_risk(uid: str):
         # Try to find by account ID directly
         re = _demo_data["risk_events"].get(uid)
         if re:
+            logger.info("Found risk event directly for account_id=%s, score=%.2f", uid, re.unified_score)
             return UserRiskResponse(
                 account_id=uid,
                 unified_score=re.unified_score,
@@ -215,7 +279,8 @@ async def user_risk(uid: str):
                 explanation=re.explanation,
                 recommended_action=re.recommended_action,
             ).model_dump()
-        raise HTTPException(status_code=404, detail="User not found")
+        logger.warning("User not found: uid=%s (available users: %s)", uid, list(_demo_data["users"].keys())[:5])
+        raise HTTPException(status_code=404, detail=f"User not found: {uid}")
 
     # Get risk for first linked account
     account_id = user.linked_accounts[0] if user.linked_accounts else uid

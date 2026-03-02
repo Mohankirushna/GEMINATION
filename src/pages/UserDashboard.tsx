@@ -27,7 +27,7 @@ import GlassCard from "../components/GlassCard";
 import RiskGauge from "../components/RiskGauge";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 
-const DEMO_ACCOUNT = "acc_priya";
+const DEMO_ACCOUNT = "acc_victim_1";
 
 export default function UserDashboard() {
   const [risk, setRisk] = useState<UserRiskResponse | null>(null);
