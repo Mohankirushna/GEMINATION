@@ -45,6 +45,10 @@ import {
   runScenario,
 } from "../services/api";
 import { getMockAlerts } from "../services/mockData";
+import {
+  useRealtimeAlerts,
+  useRealtimeSummary,
+} from "../services/firestoreService";
 
 const fallbackTrend = [
   { time: "10:00", risk: 0.2 },
@@ -70,6 +74,33 @@ export default function BankDashboard() {
   const [strUrl, setStrUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>("");
+
+  // Real-time Firestore hooks (fallback gracefully when Firestore unavailable)
+  const rtAlerts = useRealtimeAlerts(filterStatus || undefined);
+  const rtSummary = useRealtimeSummary();
+
+  // Merge: prefer real-time Firestore data when available, otherwise REST/mock
+  useEffect(() => {
+    if (rtAlerts.isRealtime && rtAlerts.alerts.length > 0) {
+      setAlerts(rtAlerts.alerts);
+    }
+  }, [rtAlerts.alerts, rtAlerts.isRealtime]);
+
+  useEffect(() => {
+    if (rtSummary.isRealtime && rtSummary.summary) {
+      setSummary((prev) => ({
+        ...rtSummary.summary!,
+        // Keep REST transaction count & trends since Firestore summary may lack them
+        transactions_monitored:
+          rtSummary.summary!.transactions_monitored ||
+          prev?.transactions_monitored ||
+          0,
+        risk_trend: rtSummary.summary!.risk_trend?.length
+          ? rtSummary.summary!.risk_trend
+          : prev?.risk_trend || fallbackTrend,
+      }));
+    }
+  }, [rtSummary.summary, rtSummary.isRealtime]);
 
   // Fetch data from API, fallback to mock
   useEffect(() => {

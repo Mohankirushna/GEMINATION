@@ -10,9 +10,11 @@ import {
   Menu,
   X,
   Zap,
+  Building2,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useState } from "react";
+import { useAuth } from "../contexts/AuthContext";
 
 interface NavItem {
   label: string;
@@ -57,6 +59,7 @@ const userNav: NavItem[] = [
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { profile, signOutUser } = useAuth();
   const isBank = location.pathname.startsWith("/bank");
   const isUser = location.pathname.startsWith("/user");
   const isLanding = location.pathname === "/";
@@ -138,12 +141,54 @@ export default function Layout() {
               AI-powered risk explanations & SMS scam detection active.
             </p>
           </div>
+
+          {/* User profile card */}
+          {profile && (
+            <div className="mx-2 mb-2 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+              <div className="flex items-center gap-2.5">
+                {profile.photoURL ? (
+                  <img
+                    src={profile.photoURL}
+                    alt=""
+                    className="h-8 w-8 rounded-full ring-2 ring-amber-400/30"
+                  />
+                ) : (
+                  <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amber-400 to-cyan-400 flex items-center justify-center text-xs font-bold text-[#0a0e1a]">
+                    {(profile.displayName ||
+                      profile.email ||
+                      "U")[0].toUpperCase()}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-white truncate">
+                    {profile.displayName || profile.email}
+                  </p>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    {profile.role === "financial_institution" ? (
+                      <Building2 className="h-2.5 w-2.5 text-cyan-400" />
+                    ) : (
+                      <UserCircle className="h-2.5 w-2.5 text-emerald-400" />
+                    )}
+                    <span className="text-[10px] text-slate-500">
+                      {profile.role === "financial_institution"
+                        ? "Bank Analyst"
+                        : "Account Holder"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <button
-            onClick={() => navigate("/")}
+            onClick={async () => {
+              await signOutUser();
+              navigate("/auth");
+            }}
             className="nav-link w-full text-left text-red-400 hover:text-red-300 hover:bg-red-500/10"
           >
             <LogOut className="h-4 w-4" />
-            Exit Dashboard
+            Sign Out
           </button>
         </div>
       </aside>
@@ -160,6 +205,13 @@ export default function Layout() {
           </button>
 
           <div className="flex-1" />
+
+          {/* User name in header */}
+          {profile && (
+            <span className="hidden sm:block text-xs text-slate-400 mr-3 truncate max-w-[160px]">
+              {profile.displayName || profile.email}
+            </span>
+          )}
 
           {/* Live Indicator */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">

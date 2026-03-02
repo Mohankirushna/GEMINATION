@@ -174,8 +174,12 @@ Respond ONLY as a JSON object:
             return result
 
     except Exception as e:
+        error_msg = str(e)
+        # Handle expired / invalid API key gracefully
+        if "API_KEY_INVALID" in error_msg or "API key expired" in error_msg or "INVALID_ARGUMENT" in error_msg:
+            return _generate_fallback_explanation(alert)
         return GeminiExplanation(
-            explanation=f"Error generating explanation: {str(e)}",
+            explanation=f"Error generating explanation: {error_msg}",
             recommendation="Manual review required.",
             confidence=0.0,
             key_indicators=["api_error"],
@@ -186,6 +190,71 @@ Respond ONLY as a JSON object:
         recommendation="Manual review required.",
         confidence=0.0,
         key_indicators=["unknown_error"],
+    )
+
+
+def _generate_fallback_explanation(alert: Alert) -> GeminiExplanation:
+    """Generate a rule-based explanation when Gemini API is unavailable."""
+    indicators = []
+    explanations = []
+
+    # Analyze cyber events
+    if alert.cyber_events:
+        device_ids = set(e.device_id for e in alert.cyber_events)
+        if len(device_ids) == 1 and len(alert.cyber_events) > 1:
+            indicators.append("device_reuse")
+            explanations.append("Single device accessing multiple accounts")
+
+        event_types = [e.event_type.value for e in alert.cyber_events]
+        if "impossible_travel" in event_types:
+            indicators.append("impossible_travel")
+            explanations.append("impossible travel detected")
+        if "phishing" in event_types:
+            indicators.append("phishing_attempt")
+            explanations.append("phishing activity observed")
+        if "new_device" in event_types:
+            indicators.append("new_device_login")
+
+    # Analyze financial transactions
+    if alert.financial_transactions:
+        total_amount = sum(t.amount for t in alert.financial_transactions)
+        unique_receivers = set(t.receiver for t in alert.financial_transactions)
+        if len(unique_receivers) >= 3:
+            indicators.append("rapid_layering")
+            explanations.append(f"rapid fund distribution to {len(unique_receivers)} accounts (₹{total_amount:,.0f} total)")
+        if total_amount > 50000:
+            indicators.append("high_value_transfers")
+
+    # Determine mule network
+    if len(alert.accounts_flagged) >= 3:
+        indicators.append("mule_network")
+        explanations.append(f"mule ring involving {len(alert.accounts_flagged)} accounts")
+
+    score = alert.unified_risk_score
+    if score >= 0.8:
+        level = "Critical"
+        action = "Immediately freeze flagged accounts and file STR."
+    elif score >= 0.6:
+        level = "High"
+        action = "Escalate to compliance team for urgent review and consider temporary hold."
+    elif score >= 0.4:
+        level = "Medium"
+        action = "Continue monitoring and gather additional evidence before action."
+    else:
+        level = "Low"
+        action = "Log for periodic review. No immediate action required."
+
+    explanation = f"{level} risk alert (score: {score:.2f}). "
+    if explanations:
+        explanation += "Key findings: " + "; ".join(explanations) + "."
+    else:
+        explanation += "Multiple risk signals detected across flagged accounts."
+
+    return GeminiExplanation(
+        explanation=explanation,
+        recommendation=action,
+        confidence=min(0.7, score),
+        key_indicators=indicators or ["multi_signal_alert"],
     )
 
 
@@ -258,10 +327,14 @@ Respond ONLY as JSON:
             )
 
     except Exception as e:
+        error_msg = str(e)
+        # Handle expired / invalid API key — use rule-based fallback
+        if "API_KEY_INVALID" in error_msg or "API key expired" in error_msg or "INVALID_ARGUMENT" in error_msg:
+            return _analyze_sms_fallback(sms_text)
         return SMSAnalysisResult(
             is_scam=False,
             confidence=0.0,
-            explanation=f"Error: {str(e)}",
+            explanation=f"Error: {error_msg}",
             risk_indicators=["api_error"],
         )
 
@@ -270,4 +343,73 @@ Respond ONLY as JSON:
         confidence=0.0,
         explanation="Analysis failed.",
         risk_indicators=["unknown_error"],
+    )
+
+
+def _analyze_sms_fallback(sms_text: str) -> SMSAnalysisResult:
+    """Rule-based SMS scam detection when Gemini API is unavailable."""
+    import re as regex
+
+    text_lower = sms_text.lower()
+    indicators = []
+    score = 0.0
+
+    # Urgency language
+    urgency_words = ["immediately", "urgent", "act now", "expires today", "last chance", "hurry", "limited time"]
+    for word in urgency_words:
+        if word in text_lower:
+            indicators.append("urgency_language")
+            score += 0.15
+            break
+
+    # Suspicious links
+    if regex.search(r'https?://[^\s]+', sms_text) or regex.search(r'bit\.ly|tinyurl|goo\.gl|t\.co', text_lower):
+        indicators.append("suspicious_link")
+        score += 0.2
+
+    # Request for personal info
+    pii_words = ["otp", "pin", "password", "cvv", "card number", "bank account", "aadhaar", "pan"]
+    for word in pii_words:
+        if word in text_lower:
+            indicators.append("pii_request")
+            score += 0.25
+            break
+
+    # Impersonation
+    impersonation = ["reserve bank", "rbi", "sbi", "hdfc", "icici", "government", "income tax", "kyc"]
+    for word in impersonation:
+        if word in text_lower:
+            indicators.append("impersonation")
+            score += 0.15
+            break
+
+    # Reward/prize claims
+    reward_words = ["won", "winner", "prize", "reward", "cashback", "credit", "free"]
+    for word in reward_words:
+        if word in text_lower:
+            indicators.append("reward_claim")
+            score += 0.1
+            break
+
+    # Threat language
+    threat_words = ["blocked", "suspended", "deactivated", "legal action", "arrest"]
+    for word in threat_words:
+        if word in text_lower:
+            indicators.append("threat_language")
+            score += 0.2
+            break
+
+    score = min(score, 1.0)
+    is_scam = score >= 0.4
+
+    if is_scam:
+        explanation = f"This message shows {len(indicators)} scam indicator(s): {', '.join(indicators)}. Exercise caution."
+    else:
+        explanation = "This message appears relatively safe based on pattern analysis. No strong scam indicators detected."
+
+    return SMSAnalysisResult(
+        is_scam=is_scam,
+        confidence=score,
+        explanation=explanation + " (Analysis via rule-based engine — Gemini AI temporarily unavailable.)",
+        risk_indicators=indicators or ["none_detected"],
     )

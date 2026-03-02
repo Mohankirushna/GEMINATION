@@ -26,6 +26,7 @@ import { fetchUserRisk, fetchUserEvents, analyzeSMS } from "../services/api";
 import GlassCard from "../components/GlassCard";
 import RiskGauge from "../components/RiskGauge";
 import LoadingSkeleton from "../components/LoadingSkeleton";
+import { useRealtimeUserRisk } from "../services/firestoreService";
 
 const DEMO_ACCOUNT = "acc_victim_1";
 
@@ -41,6 +42,16 @@ export default function UserDashboard() {
   const [smsText, setSmsText] = useState("");
   const [smsResult, setSmsResult] = useState<SMSAnalysisResult | null>(null);
   const [smsLoading, setSmsLoading] = useState(false);
+
+  // Real-time Firestore risk listener
+  const rtRisk = useRealtimeUserRisk(DEMO_ACCOUNT);
+
+  // Merge real-time risk when available
+  useEffect(() => {
+    if (rtRisk.isRealtime && rtRisk.risk) {
+      setRisk(rtRisk.risk);
+    }
+  }, [rtRisk.risk, rtRisk.isRealtime]);
 
   useEffect(() => {
     (async () => {

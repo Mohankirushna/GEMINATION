@@ -65,7 +65,7 @@ export default function LandingPage() {
 
         {/* ── Role Cards ──────────────────────────────────── */}
         <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">
-          <Link to="/bank">
+          <Link to="/auth">
             <GlassCard className="p-8 group text-left h-full" glow="cyan">
               <div className="h-14 w-14 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
                 <Building2 className="h-7 w-7 text-cyan-400" />
@@ -81,7 +81,7 @@ export default function LandingPage() {
             </GlassCard>
           </Link>
 
-          <Link to="/user">
+          <Link to="/auth">
             <GlassCard className="p-8 group text-left h-full" glow="emerald">
               <div className="h-14 w-14 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
                 <UserCircle className="h-7 w-7 text-emerald-400" />
