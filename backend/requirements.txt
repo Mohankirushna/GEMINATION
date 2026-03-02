@@ -1,0 +1,11 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+firebase-admin==6.6.0
+google-genai==1.14.0
+networkx==3.4.2
+python-louvain==0.16
+fpdf2==2.8.3
+pydantic==2.10.4
+python-dotenv==1.0.1
+httpx==0.28.1
+numpy==2.2.1
