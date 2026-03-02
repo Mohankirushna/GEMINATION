@@ -96,6 +96,12 @@ def simulate_freeze(
         "disruption_effectiveness": round(
             (1 - len(remaining_downstream) / max(len(downstream), 1)) * 100, 1
         ),
+        "money_saved_by_surakshaflow": max(0, prevented),
+        "message": (
+            f"SurakshaFlow detected the threat and recommended freezing {freeze_account}. "
+            f"This action saved ₹{max(0, prevented):,.0f} and protected "
+            f"{len(downstream) - len(remaining_downstream)} downstream accounts."
+        ),
     }
 
     return SimulationResult(

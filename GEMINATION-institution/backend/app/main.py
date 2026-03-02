@@ -8,7 +8,7 @@ import io
 import logging
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -1113,23 +1113,26 @@ async def ml_graph_classification():
 
 @app.post("/api/ml/retrain")
 async def ml_retrain():
-    """Retrain all ML models on fresh synthetic data."""
+    """Retrain ML models incrementally using accumulated real data + synthetic augmentation."""
     try:
-        from .ml.fraud_models import FraudMLPredictor
-        from .ml.temporal_gnn import TemporalGNNClassifier
+        from .ml.fraud_models import get_ml_predictor
+        from .ml.temporal_gnn import get_gnn_classifier
 
-        # Create new model instances and train
-        predictor = FraudMLPredictor()
-        pred_metrics = predictor.train_all()
+        # Reuse existing singleton instances (preserves training history)
+        predictor = get_ml_predictor()
+        gnn = get_gnn_classifier()
 
-        gnn = TemporalGNNClassifier()
-        gnn_metrics = gnn.train()
+        # Pull real data from accumulated live-simulation pool
+        transactions = list(_demo_data.get("transactions", []))
+        cyber_events = list(_demo_data.get("cyber_events", []))
 
-        # Update globals
-        import app.ml.fraud_models as fm
-        import app.ml.temporal_gnn as tg
-        fm._predictor = predictor
-        tg._gnn_classifier = gnn
+        # Incremental retrain — only processes new accounts / new graph edges
+        pred_metrics = predictor.retrain_with_data(
+            transactions, cyber_events, n_synthetic=1000,
+        )
+        gnn_metrics = gnn.retrain_with_graph(
+            transactions, known_victims=set(), n_synthetic_augment=30,
+        )
 
         return {
             "success": True,
@@ -1234,6 +1237,161 @@ async def reset_timeseries():
     
     reset_database()
     return {"success": True, "message": "Timeseries database reset. Simulation will restart from tick 1."}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ACCOUNT FREEZE
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@app.post("/api/account/freeze/{account_id}")
+async def freeze_account(account_id: str):
+    """Emergency account freeze for extreme risk cases."""
+    _ensure_demo_data()
+    frozen = _demo_data.setdefault("frozen_accounts", set())
+    frozen.add(account_id)
+
+    # Run digital twin to calculate savings
+    from .services.digital_twin import simulate_freeze
+    result = simulate_freeze(
+        txns=_demo_data["transactions"],
+        freeze_account=account_id,
+        known_victims={"acc_victim_1", "acc_victim_2"},
+    )
+
+    money_saved = result.optimal_action.get("prevented_loss", 0)
+    msg = result.optimal_action.get("message", "")
+
+    return {
+        "success": True,
+        "account_id": account_id,
+        "status": "frozen",
+        "money_saved": money_saved,
+        "message": msg or f"Account {account_id} has been frozen. ₹{money_saved:,.0f} in potential losses prevented by SurakshaFlow.",
+        "downstream_protected": result.no_action.get("downstream_accounts", 0),
+        "disruption_effectiveness": result.optimal_action.get("disruption_effectiveness", 0),
+    }
+
+
+@app.post("/api/account/unfreeze/{account_id}")
+async def unfreeze_account(account_id: str):
+    """Unfreeze a previously frozen account."""
+    _ensure_demo_data()
+    frozen = _demo_data.get("frozen_accounts", set())
+    if account_id in frozen:
+        frozen.discard(account_id)
+        return {"success": True, "account_id": account_id, "status": "active"}
+    return {"success": False, "message": "Account was not frozen."}
+
+
+@app.get("/api/account/frozen")
+async def get_frozen_accounts():
+    """Get list of all frozen accounts."""
+    _ensure_demo_data()
+    frozen = list(_demo_data.get("frozen_accounts", set()))
+    return {"frozen_accounts": frozen, "count": len(frozen)}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SESSION MANAGEMENT
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@app.post("/api/session/start")
+async def start_session():
+    """Start a new monitoring session. Archives current data to history and generates fresh data."""
+    session_id = f"session_{uuid.uuid4().hex[:8]}"
+
+    # Archive current alerts + events to history
+    history_store = _demo_data.setdefault("session_history", [])
+    current_alerts = list(_demo_data.get("alerts", {}).values())
+    if current_alerts:
+        history_store.append({
+            "session_id": _demo_data.get("current_session", "initial"),
+            "started_at": _demo_data.get("session_start", datetime.utcnow().isoformat()),
+            "ended_at": datetime.utcnow().isoformat(),
+            "alert_count": len(current_alerts),
+            "alerts": [a.model_dump(mode="json") if hasattr(a, "model_dump") else a for a in current_alerts[:20]],
+            "high_risk_count": sum(1 for a in current_alerts if (a.unified_risk_score if hasattr(a, "unified_risk_score") else 0) >= 0.7),
+        })
+
+    # Save history separately before clearing
+    saved_history = list(history_store)
+
+    # Reset live data
+    _demo_data.clear()
+    _ensure_demo_data()
+    _demo_data["current_session"] = session_id
+    _demo_data["session_start"] = datetime.utcnow().isoformat()
+    _demo_data["session_history"] = saved_history
+
+    # Reset live simulation tick counter
+    try:
+        from .services.live_simulation import _state
+        _state["tick"] = 0
+    except Exception:
+        pass
+
+    return {
+        "session_id": session_id,
+        "started_at": _demo_data["session_start"],
+        "message": "New monitoring session started. Fresh data generated.",
+        "history_sessions": len(saved_history),
+    }
+
+
+@app.get("/api/session/history")
+async def session_history(period: str = "all"):
+    """Get historical session data. period: daily, weekly, monthly, all"""
+    _ensure_demo_data()
+    history = list(_demo_data.get("session_history", []))
+
+    now = datetime.utcnow()
+    if period == "daily":
+        cutoff = now - timedelta(days=1)
+    elif period == "weekly":
+        cutoff = now - timedelta(weeks=1)
+    elif period == "monthly":
+        cutoff = now - timedelta(days=30)
+    else:
+        cutoff = None
+
+    if cutoff:
+        filtered = []
+        for h in history:
+            try:
+                ts = datetime.fromisoformat(h.get("ended_at", ""))
+                if ts >= cutoff:
+                    filtered.append(h)
+            except Exception:
+                filtered.append(h)
+        history = filtered
+
+    # Also include current session summary
+    current_alerts = list(_demo_data.get("alerts", {}).values())
+    current_summary = {
+        "session_id": _demo_data.get("current_session", "active"),
+        "started_at": _demo_data.get("session_start", ""),
+        "status": "active",
+        "alert_count": len(current_alerts),
+        "high_risk_count": sum(1 for a in current_alerts if (a.unified_risk_score if hasattr(a, "unified_risk_score") else 0) >= 0.7),
+    }
+
+    return {
+        "period": period,
+        "current_session": current_summary,
+        "past_sessions": history,
+        "total_historical_alerts": sum(h.get("alert_count", 0) for h in history),
+    }
+
+
+@app.get("/api/session/current")
+async def current_session():
+    """Get current session info."""
+    _ensure_demo_data()
+    return {
+        "session_id": _demo_data.get("current_session", "default"),
+        "started_at": _demo_data.get("session_start", datetime.utcnow().isoformat()),
+        "frozen_accounts": list(_demo_data.get("frozen_accounts", set())),
+    }
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
