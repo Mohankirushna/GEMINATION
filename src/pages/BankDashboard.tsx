@@ -190,7 +190,7 @@ export default function BankDashboard() {
                 <div>
                   <h3 className="text-sm font-semibold text-neutral-900 uppercase tracking-wider mb-3 flex items-center gap-2">
                     <ShieldAlert className="h-4 w-4 text-indigo-600" />
-                    Gemini AI Analysis
+                    AI Analysis
                   </h3>
                   {loadingExplanation ? (
                     <div className="animate-pulse space-y-2">
@@ -268,7 +268,7 @@ export default function BankDashboard() {
           ) : (
             <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm p-8 text-center h-full flex flex-col items-center justify-center text-neutral-500">
               <ShieldAlert className="h-12 w-12 text-neutral-300 mb-4" />
-              <p>Select an alert from the feed to view detailed analysis and Gemini AI recommendations.</p>
+              <p>Select an alert from the feed to view detailed analysis and AI recommendations.</p>
             </div>
           )}
         </div>
