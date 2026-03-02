@@ -1,9 +1,11 @@
 """
 SurakshaFlow — Unified Risk Scorer
-Combines cyber, financial, and graph scores into a single unified risk score.
+Combines cyber, financial, graph, and ML scores into a single unified risk score.
+ML models provide anomaly detection and classification-based fraud scoring.
 """
 from __future__ import annotations
 
+import logging
 from typing import List, Optional
 
 from ..models import (
@@ -16,11 +18,19 @@ from .cyber_engine import compute_cyber_score, compute_cyber_score_detailed
 from .financial_engine import compute_financial_score, compute_financial_score_detailed
 from .graph_engine import analyze_graph
 
+logger = logging.getLogger("surakshaflow.scorer")
 
-# ── Weights ────────────────────────────────────────────────────
+# ── Weights (with ML) ─────────────────────────────────────────
+# When ML is available: Cyber 30%, Financial 25%, Graph 20%, ML 25%
+# When ML is unavailable: Cyber 40%, Financial 35%, Graph 25%
 CYBER_WEIGHT = 0.40
 FINANCIAL_WEIGHT = 0.35
 GRAPH_WEIGHT = 0.25
+
+CYBER_WEIGHT_ML = 0.30
+FINANCIAL_WEIGHT_ML = 0.25
+GRAPH_WEIGHT_ML = 0.20
+ML_WEIGHT = 0.25
 
 # ── Thresholds ─────────────────────────────────────────────────
 HIGH_RISK_THRESHOLD = 0.7
@@ -51,17 +61,48 @@ def compute_unified_score(
     cyber_score: float,
     financial_score: float,
     graph_score: float,
+    ml_score: Optional[float] = None,
 ) -> float:
     """
-    Unified Score = 0.4 * cyber + 0.35 * financial + 0.25 * graph
-    Returns: float in [0, 1]
+    Unified Score combining all engines.
+    With ML: 0.30*cyber + 0.25*financial + 0.20*graph + 0.25*ml
+    Without: 0.40*cyber + 0.35*financial + 0.25*graph
     """
-    score = (
-        CYBER_WEIGHT * cyber_score
-        + FINANCIAL_WEIGHT * financial_score
-        + GRAPH_WEIGHT * graph_score
-    )
+    if ml_score is not None:
+        score = (
+            CYBER_WEIGHT_ML * cyber_score
+            + FINANCIAL_WEIGHT_ML * financial_score
+            + GRAPH_WEIGHT_ML * graph_score
+            + ML_WEIGHT * ml_score
+        )
+    else:
+        score = (
+            CYBER_WEIGHT * cyber_score
+            + FINANCIAL_WEIGHT * financial_score
+            + GRAPH_WEIGHT * graph_score
+        )
     return round(min(1.0, max(0.0, score)), 4)
+
+
+def _get_ml_score(
+    account_id: str,
+    cyber_events: List[CyberEvent],
+    financial_txns: List[FinancialTransaction],
+) -> Optional[float]:
+    """Get ML fraud score for an account. Returns None if ML is unavailable."""
+    try:
+        from ..ml.feature_engineering import get_feature_engineer
+        from ..ml.fraud_models import get_ml_predictor
+
+        fe = get_feature_engineer()
+        predictor = get_ml_predictor()
+
+        features = fe.extract_features(account_id, financial_txns, cyber_events)
+        result = predictor.predict_single(features)
+        return result["combined_score"]
+    except Exception as e:
+        logger.debug("ML scoring unavailable for %s: %s", account_id, str(e))
+        return None
 
 
 def score_account(
@@ -79,6 +120,7 @@ def score_account(
       - cyber_score + factors
       - financial_score + factors
       - graph_score
+      - ml_score (if available)
       - risk_level
       - severity
     """
@@ -102,13 +144,17 @@ def score_account(
             graph_score = node.risk_score
             break
 
+    # ML score (optional)
+    ml_score = _get_ml_score(account_id, cyber_events, financial_txns)
+
     unified = compute_unified_score(
         cyber_detail["cyber_score"],
         fin_detail["financial_score"],
         graph_score,
+        ml_score,
     )
 
-    return {
+    result = {
         "account_id": account_id,
         "unified_score": unified,
         "cyber_score": cyber_detail["cyber_score"],
@@ -119,6 +165,14 @@ def score_account(
         "risk_level": classify_risk(unified),
         "severity": classify_severity(unified).value,
     }
+
+    if ml_score is not None:
+        result["ml_score"] = ml_score
+        result["ml_enabled"] = True
+    else:
+        result["ml_enabled"] = False
+
+    return result
 
 
 def should_trigger_gemini(unified_score: float) -> bool:

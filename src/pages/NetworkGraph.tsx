@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import * as d3 from "d3";
 import { fetchGraphData } from "../services/api";
 import { generateMockGraphData } from "../services/mockData";
 import { GraphNode, GraphEdge, GraphData } from "../types";
 import GlassCard from "../components/GlassCard";
-import { Network, ZoomIn, ZoomOut, RotateCcw, Info } from "lucide-react";
+import { Network, ZoomIn, ZoomOut, RotateCcw, Info, Play, Pause, RefreshCw } from "lucide-react";
 
 const NODE_COLORS: Record<string, string> = {
-  kingpin: "#ef4444",
-  mule: "#f59e0b",
+  kingpin: "#ef4444",      // red — mule ring leader
+  mule: "#f59e0b",         // amber — mule (rule-based)
+  ml_kingpin: "#dc2626",   // bright red — ML-detected kingpin
+  ml_mule: "#3b82f6",      // blue — ML-detected mule
   victim: "#10b981",
   suspect: "#f97316",
   clean: "#06b6d4",
@@ -18,6 +20,8 @@ const NODE_COLORS: Record<string, string> = {
 const GLOW_COLORS: Record<string, string> = {
   kingpin: "rgba(239,68,68,0.6)",
   mule: "rgba(245,158,11,0.5)",
+  ml_kingpin: "rgba(220,38,38,0.7)",
+  ml_mule: "rgba(59,130,246,0.6)",
   victim: "rgba(16,185,129,0.4)",
   suspect: "rgba(249,115,22,0.5)",
   clean: "rgba(6,182,212,0.3)",
@@ -26,8 +30,10 @@ const GLOW_COLORS: Record<string, string> = {
 
 function nodeColor(n: GraphNode) {
   const label = (n.node_label ?? n.label ?? "").toLowerCase();
-  if (label.includes("kingpin")) return NODE_COLORS.kingpin;
-  if (label.includes("mule")) return NODE_COLORS.mule;
+  const mlDetected = (n as any).ml_detected;
+  
+  if (label.includes("kingpin")) return mlDetected ? NODE_COLORS.ml_kingpin : NODE_COLORS.kingpin;
+  if (label.includes("mule")) return mlDetected ? NODE_COLORS.ml_mule : NODE_COLORS.mule;
   if (label.includes("victim")) return NODE_COLORS.victim;
   if (label.includes("suspect")) return NODE_COLORS.suspect;
   if (n.type === "device") return NODE_COLORS.device;
@@ -38,8 +44,10 @@ function nodeColor(n: GraphNode) {
 
 function nodeGlow(n: GraphNode) {
   const label = (n.node_label ?? n.label ?? "").toLowerCase();
-  if (label.includes("kingpin")) return GLOW_COLORS.kingpin;
-  if (label.includes("mule")) return GLOW_COLORS.mule;
+  const mlDetected = (n as any).ml_detected;
+  
+  if (label.includes("kingpin")) return mlDetected ? GLOW_COLORS.ml_kingpin : GLOW_COLORS.kingpin;
+  if (label.includes("mule")) return mlDetected ? GLOW_COLORS.ml_mule : GLOW_COLORS.mule;
   if (label.includes("victim")) return GLOW_COLORS.victim;
   if (n.type === "device") return GLOW_COLORS.device;
   return GLOW_COLORS.clean;
@@ -49,19 +57,36 @@ export default function NetworkGraph() {
   const svgRef = useRef<SVGSVGElement>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
+  const [isLive, setIsLive] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<string>("");
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load data
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await fetchGraphData();
-        setGraphData(data);
-      } catch {
-        setGraphData(generateMockGraphData());
-      }
-    })();
+  const loadGraph = useCallback(async () => {
+    try {
+      const data = await fetchGraphData();
+      setGraphData(data);
+      setLastUpdate(new Date().toLocaleTimeString());
+    } catch {
+      setGraphData(generateMockGraphData());
+      setLastUpdate(new Date().toLocaleTimeString() + " (mock)");
+    }
   }, []);
+
+  // Initial load
+  useEffect(() => {
+    loadGraph();
+  }, [loadGraph]);
+
+  // Polling for dynamic updates
+  useEffect(() => {
+    if (isLive) {
+      intervalRef.current = setInterval(loadGraph, 10000); // 10s polling
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [isLive, loadGraph]);
 
   // Render graph
   useEffect(() => {
@@ -281,11 +306,38 @@ export default function NetworkGraph() {
           <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             <Network className="h-6 w-6 text-cyan-400" />
             Network Intelligence Graph
+            {isLive && (
+              <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-emerald-400">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                LIVE
+              </span>
+            )}
           </h1>
           <p className="text-sm text-slate-400 mt-1">
             Visualizing transaction flows and device connections to identify
             mule rings.
+            {lastUpdate && <span className="ml-2 text-slate-600">Last update: {lastUpdate}</span>}
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsLive(!isLive)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+              isLive
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                : "border-white/[0.08] bg-white/[0.04] text-slate-400"
+            }`}
+          >
+            {isLive ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            {isLive ? "Pause" : "Resume"}
+          </button>
+          <button
+            onClick={loadGraph}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/[0.08] bg-white/[0.04] text-slate-400 hover:text-white transition-all"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+          </button>
         </div>
       </div>
 
@@ -322,6 +374,8 @@ export default function NetworkGraph() {
               {[
                 { label: "Kingpin", color: NODE_COLORS.kingpin },
                 { label: "Mule", color: NODE_COLORS.mule },
+                { label: "ML Kingpin", color: NODE_COLORS.ml_kingpin },
+                { label: "ML Mule", color: NODE_COLORS.ml_mule },
                 { label: "Victim", color: NODE_COLORS.victim },
                 { label: "Clean", color: NODE_COLORS.clean },
                 { label: "Device", color: NODE_COLORS.device },

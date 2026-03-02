@@ -136,7 +136,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signIn(email: string, password: string) {
     const auth = getAuthInstance();
-    if (!auth) throw new Error("Firebase not configured");
+    if (!auth) {
+      // Firebase not configured — fall back to demo mode
+      // Determine role from email pattern (institution emails often have org domains)
+      const role: UserRole = email.includes("bank") || email.includes("sbi") || email.includes("hdfc") || email.includes("icici") || email.includes("institution")
+        ? "financial_institution"
+        : "end_user";
+      const profile = makeDemoProfile(role);
+      profile.email = email;
+      profile.displayName = email.split("@")[0];
+      profile.uid = `demo_${Date.now()}`;
+      // Generate backend data for this user
+      try {
+        const accountId = `acc_${profile.uid.slice(0, 8)}`;
+        await generateUserData(accountId, email);
+      } catch { /* non-critical */ }
+      setState((s) => ({ ...s, profile, loading: false, error: null }));
+      return;
+    }
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
       await signInWithEmailAndPassword(auth, email, password);
@@ -154,7 +171,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ) {
     const auth = getAuthInstance();
     const db = getDbInstance();
-    if (!auth || !db) throw new Error("Firebase not configured");
+    if (!auth || !db) {
+      // Firebase not configured — fall back to demo mode with chosen role
+      const profile = makeDemoProfile(role);
+      profile.email = email;
+      profile.displayName = displayName;
+      profile.uid = `demo_${Date.now()}`;
+      // Generate backend data for this user
+      try {
+        const accountId = `acc_${profile.uid.slice(0, 8)}`;
+        await generateUserData(accountId, email);
+      } catch { /* non-critical */ }
+      setState((s) => ({ ...s, profile, loading: false, error: null }));
+      return;
+    }
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
@@ -182,7 +212,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signInWithGoogleFn(role?: UserRole) {
     const auth = getAuthInstance();
     const db = getDbInstance();
-    if (!auth || !db) throw new Error("Firebase not configured");
+    if (!auth || !db) {
+      // Firebase not configured — fall back to demo mode
+      const demoRole = role ?? "end_user";
+      const profile = makeDemoProfile(demoRole);
+      profile.uid = `demo_google_${Date.now()}`;
+      try {
+        const accountId = `acc_${profile.uid.slice(0, 8)}`;
+        await generateUserData(accountId, profile.email);
+      } catch { /* non-critical */ }
+      setState((s) => ({ ...s, profile, loading: false, error: null }));
+      return;
+    }
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
       const provider = new GoogleAuthProvider();

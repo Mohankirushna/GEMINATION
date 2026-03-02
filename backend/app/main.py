@@ -138,6 +138,19 @@ async def startup():
     logger.info("SurakshaFlow API starting up...")
     logger.info("Features — Gemini: %s | Digital Twin: %s | Graph: %s", ENABLE_GEMINI, ENABLE_DIGITAL_TWIN, ENABLE_GRAPH_ANALYTICS)
     _ensure_demo_data()
+
+    # Initialize ML models in background (non-blocking)
+    try:
+        from .ml.fraud_models import get_ml_predictor
+        from .ml.temporal_gnn import get_gnn_classifier
+        predictor = get_ml_predictor()
+        gnn = get_gnn_classifier()
+        logger.info("ML models initialized: predictor=%s, gnn=%s",
+                     "trained" if predictor.is_trained else "fallback",
+                     "trained" if gnn.is_trained else "fallback")
+    except Exception as e:
+        logger.warning("ML model initialization failed (will use rule-based fallback): %s", str(e))
+
     logger.info("SurakshaFlow API ready on %s:%s", HOST, PORT)
 
 
@@ -340,7 +353,7 @@ async def user_events(uid: str):
 
 @app.get("/api/graph/network")
 async def graph_network():
-    """Full transaction graph with centrality metrics."""
+    """Full transaction graph with centrality metrics. Rebuilds on every call to reflect simulation updates."""
     if not ENABLE_GRAPH_ANALYTICS:
         raise HTTPException(status_code=403, detail="Graph analytics is disabled")
 
@@ -348,12 +361,29 @@ async def graph_network():
     from .risk_engine.graph_engine import analyze_graph
 
     txns = _demo_data["transactions"]
-    # Convert to model objects for the graph engine
+    # Include ML-detected labels if available
+    ml_labels = _demo_data.get("ml_node_labels", {})
     graph_data = analyze_graph(
         txns,
         known_victims={"acc_victim_1", "acc_victim_2"},
     )
-    return graph_data.model_dump(mode="json")
+
+    # Override node labels with ML detections (temporal GNN results)
+    if ml_labels:
+        for node in graph_data.nodes:
+            if node.id in ml_labels:
+                node.node_label = ml_labels[node.id]
+
+    # Serialize and add ml_detected flag
+    result = graph_data.model_dump(mode="json")
+    if ml_labels:
+        for node_data in result.get("nodes", []):
+            if node_data.get("id") in ml_labels:
+                node_data["ml_detected"] = True
+            else:
+                node_data["ml_detected"] = False
+
+    return result
 
 
 @app.get("/api/graph/cluster/{account_id}")
@@ -404,13 +434,7 @@ class ExplainRequest(BaseModel):
 
 @app.post("/api/gemini/explain")
 async def gemini_explain(req: ExplainRequest):
-    """Generate AI explanation for an alert."""
-    if not ENABLE_GEMINI:
-        return GeminiExplanation(
-            explanation="Gemini AI is disabled via feature flag.",
-            recommendation="Enable ENABLE_GEMINI in environment.",
-        ).model_dump()
-
+    """Generate AI explanation for an alert. Falls back to rule-based analysis when Gemini is unavailable."""
     _ensure_demo_data()
     alert = _demo_data["alerts"].get(req.alert_id)
     if not alert:
@@ -425,7 +449,15 @@ async def gemini_explain(req: ExplainRequest):
             key_indicators=["device_reuse", "rapid_layering", "mule_network"],
         ).model_dump()
 
-    from .services.gemini_service import generate_alert_explanation
+    from .services.gemini_service import generate_alert_explanation, _generate_fallback_explanation
+
+    if not ENABLE_GEMINI:
+        # Use rule-based fallback
+        result = _generate_fallback_explanation(alert)
+        alert.gemini_explanation = result.explanation
+        alert.recommended_action = result.recommendation
+        return result.model_dump()
+
     result = await generate_alert_explanation(alert)
 
     # Cache result
@@ -441,13 +473,14 @@ class SMSRequest(BaseModel):
 
 @app.post("/api/gemini/analyze-sms")
 async def gemini_sms(req: SMSRequest):
-    """Check if an SMS is a scam."""
-    if not ENABLE_GEMINI:
-        return SMSAnalysisResult(
-            is_scam=False, confidence=0, explanation="Gemini AI is disabled.",
-        ).model_dump()
+    """Check if an SMS is a scam. Falls back to rule-based analysis when Gemini is unavailable."""
+    from .services.gemini_service import analyze_sms, _analyze_sms_fallback
 
-    from .services.gemini_service import analyze_sms
+    if not ENABLE_GEMINI:
+        # Use rule-based fallback instead of returning empty result
+        result = _analyze_sms_fallback(req.text)
+        return result.model_dump()
+
     result = await analyze_sms(req.text)
     return result.model_dump()
 
@@ -475,6 +508,18 @@ async def generate_str(alert_id: str):
     re = _demo_data["risk_events"].get(account_id)
     if re:
         score_details = re.model_dump(mode="json")
+
+    # Add ML score if available
+    try:
+        from .ml.feature_engineering import get_feature_engineer
+        from .ml.fraud_models import get_ml_predictor
+        fe = get_feature_engineer()
+        predictor = get_ml_predictor()
+        features = fe.extract_features(account_id, _demo_data["transactions"], _demo_data["cyber_events"])
+        ml_result = predictor.predict_single(features)
+        score_details["ml_score"] = round(ml_result["combined_score"], 4)
+    except Exception:
+        pass
 
     pdf_bytes = generate_str_pdf(
         alert_data=alert_dict,
@@ -632,6 +677,43 @@ async def live_event():
             }
 
     # Inject the new event into the in-memory demo data store
+    # Add transaction to the pool so the graph updates dynamically
+    try:
+        new_txn = FinancialTransaction(**event["transaction"])
+        _demo_data["transactions"].append(new_txn)
+        # Keep transactions list bounded to avoid memory growth
+        if len(_demo_data["transactions"]) > 500:
+            _demo_data["transactions"] = _demo_data["transactions"][-400:]
+    except Exception as e:
+        logger.warning("Failed to store live transaction: %s", str(e))
+
+    # Add cyber event
+    try:
+        new_ce = CyberEvent(**event["cyber_event"])
+        _demo_data["cyber_events"].append(new_ce)
+        if len(_demo_data["cyber_events"]) > 500:
+            _demo_data["cyber_events"] = _demo_data["cyber_events"][-400:]
+    except Exception as e:
+        logger.warning("Failed to store live cyber event: %s", str(e))
+
+    # Run temporal GNN classification every 5 ticks to update mule/kingpin labels
+    if event["tick"] % 5 == 0:
+        try:
+            from .ml.temporal_gnn import classify_graph_nodes
+            labels = classify_graph_nodes(
+                _demo_data["transactions"],
+                known_victims={"acc_victim_1", "acc_victim_2"},
+            )
+            _demo_data["ml_node_labels"] = labels
+            # Include ML labels in the event response
+            label_summary = {}
+            for nid, lbl in labels.items():
+                val = lbl.value if hasattr(lbl, 'value') else str(lbl)
+                label_summary[nid] = val
+            event["ml_node_labels"] = label_summary
+        except Exception as e:
+            logger.debug("GNN classification skipped: %s", str(e))
+
     if event.get("alert"):
         alert_id = event["alert"]["id"]
         # Create a proper Alert model for storage
@@ -654,6 +736,168 @@ async def live_event():
             logger.warning("Failed to store live alert: %s", str(e))
 
     return event
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# USER LIVE SIMULATION (End-user dashboard dynamic events)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@app.get("/api/simulation/user-event/{account_id}")
+async def user_live_event(account_id: str):
+    """
+    Generate a single simulation tick for end-user dashboard.
+    Simulates geo-location changes, login anomalies, transaction velocity, etc.
+    Frontend polls this every 8 seconds.
+    """
+    _ensure_demo_data()
+    from .services.live_simulation import generate_user_live_event
+
+    event = generate_user_live_event(account_id)
+
+    # If medium+ risk and Gemini is enabled, get AI explanation
+    if event["requires_gemini"] and ENABLE_GEMINI and event.get("gemini_prompt"):
+        try:
+            from .services.gemini_service import _get_client, _rate_limit_check, _record_call
+            import json as _json
+
+            client = _get_client()
+            if client and _rate_limit_check():
+                _record_call()
+                from google.genai import types
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=event["gemini_prompt"],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.3,
+                    ),
+                )
+                if response.text:
+                    clean_text = response.text.strip()
+                    if clean_text.startswith("```json"):
+                        clean_text = clean_text[7:]
+                    if clean_text.startswith("```"):
+                        clean_text = clean_text[3:]
+                    if clean_text.endswith("```"):
+                        clean_text = clean_text[:-3]
+                    gemini_result = _json.loads(clean_text.strip())
+                    event["gemini_analysis"] = gemini_result
+        except Exception as e:
+            logger.warning("Gemini user analysis failed: %s", str(e))
+
+    # If Gemini didn't produce analysis, generate rule-based user explanation
+    if event["requires_gemini"] and not event.get("gemini_analysis"):
+        event["gemini_analysis"] = _generate_user_fallback_analysis(event)
+
+    # Update risk event in demo data
+    try:
+        from .models import RiskEvent as RiskEventModel
+        re = RiskEventModel(
+            id=f"re_{account_id}_{event['tick']}",
+            account_id=account_id,
+            unified_score=event["risk_scores"]["unified_score"],
+            cyber_score=event["risk_scores"]["cyber_score"],
+            financial_score=event["risk_scores"]["financial_score"],
+            graph_score=event["risk_scores"]["graph_score"],
+            explanation=event.get("gemini_analysis", {}).get("explanation", ""),
+            recommended_action="; ".join(event.get("procedures", [])),
+        )
+        _demo_data["risk_events"][account_id] = re
+    except Exception:
+        pass
+
+    return event
+
+
+def _generate_user_fallback_analysis(event: dict) -> dict:
+    """Generate rule-based user-friendly security explanation."""
+    changes = event.get("changes", [])
+    warnings = event.get("warnings", [])
+    risk = event["risk_scores"]["unified_score"]
+
+    # Determine urgency
+    if risk >= 0.7:
+        urgency = "dangerous"
+    elif risk >= 0.4:
+        urgency = "caution"
+    else:
+        urgency = "safe"
+
+    # Build explanation
+    explanations = []
+    steps = list(event.get("procedures", []))
+    prevention_tips = []
+    should_contact_bank = False
+
+    for w in warnings:
+        if w["type"] == "impossible_travel":
+            explanations.append(
+                f"We detected a login from a location that is physically impossible to reach "
+                f"from your previous location in the time elapsed."
+            )
+            should_contact_bank = True
+            prevention_tips.append("Always use 2-factor authentication for banking")
+            prevention_tips.append("Never share your OTP or login credentials with anyone")
+        elif w["type"] == "geo_change":
+            explanations.append(
+                f"Your account was accessed from a different city than usual. "
+                f"This could be you travelling, or someone else accessing your account."
+            )
+            prevention_tips.append("Set up location-based alerts in your banking app")
+        elif w["type"] == "new_device":
+            explanations.append(
+                f"A device we haven't seen before logged into your account. "
+                f"If you recently changed phones, this is normal."
+            )
+            prevention_tips.append("Regularly review authorized devices in your bank settings")
+            prevention_tips.append("Don't log into banking apps on shared or public devices")
+        elif w["type"] == "login_velocity":
+            explanations.append(
+                f"We detected multiple rapid login attempts on your account, "
+                f"which could indicate a brute-force attack."
+            )
+            should_contact_bank = True
+            prevention_tips.append("Use a strong, unique password for your banking app")
+            prevention_tips.append("Enable biometric authentication (fingerprint/face)")
+        elif w["type"] == "txn_velocity":
+            explanations.append(
+                f"Your account is showing unusually frequent transactions. "
+                f"This is significantly above your normal pattern."
+            )
+            should_contact_bank = risk >= 0.7
+            prevention_tips.append("Set daily transaction limits in your banking app")
+        elif w["type"] == "unusual_amount":
+            explanations.append(
+                f"A transaction much larger than your typical spending was detected. "
+                f"Unusual amounts are flagged for your security."
+            )
+            prevention_tips.append("Set up transaction amount alerts for large transfers")
+        elif w["type"] == "new_beneficiary":
+            explanations.append(
+                f"A transfer was made to a beneficiary you've never sent money to before."
+            )
+            prevention_tips.append("Double-check beneficiary details before confirming transfers")
+
+    if not explanations:
+        explanations.append("Unusual activity was detected on your account.")
+
+    if not steps:
+        if urgency == "dangerous":
+            steps = ["Change your password immediately", "Contact your bank's helpline", "Review all recent transactions"]
+        elif urgency == "caution":
+            steps = ["Review your recent activity", "Verify any unrecognized transactions", "Consider updating your password"]
+
+    if not prevention_tips:
+        prevention_tips = ["Keep your banking app updated", "Never share OTPs or passwords"]
+
+    return {
+        "explanation": " ".join(explanations) + f" (Risk score: {risk:.2f})",
+        "urgency": urgency,
+        "confidence": min(0.75, risk + 0.1),
+        "steps_to_take": steps[:5],
+        "prevention_tips": prevention_tips[:3],
+        "should_contact_bank": should_contact_bank,
+    }
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -778,6 +1022,120 @@ Respond ONLY as JSON:
         "analysis_source": "rule_based",
         "pre_analysis": pre_analysis,
     }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ML FRAUD DETECTION
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@app.get("/api/ml/status")
+async def ml_status():
+    """Get ML model training status and metrics."""
+    try:
+        from .ml.fraud_models import get_ml_predictor
+        from .ml.temporal_gnn import get_gnn_classifier
+        predictor = get_ml_predictor()
+        gnn = get_gnn_classifier()
+        return {
+            "ml_enabled": True,
+            "fraud_predictor": {
+                "trained": predictor.is_trained,
+                "metrics": predictor.training_metrics,
+            },
+            "temporal_gnn": {
+                "trained": gnn.is_trained,
+                "metrics": gnn._metrics,
+            },
+        }
+    except Exception as e:
+        return {"ml_enabled": False, "error": str(e)}
+
+
+@app.post("/api/ml/predict/{account_id}")
+async def ml_predict(account_id: str):
+    """Run ML fraud prediction for a specific account."""
+    _ensure_demo_data()
+
+    try:
+        from .ml.feature_engineering import get_feature_engineer
+        from .ml.fraud_models import get_ml_predictor
+
+        fe = get_feature_engineer()
+        predictor = get_ml_predictor()
+
+        features = fe.extract_features(
+            account_id,
+            _demo_data["transactions"],
+            _demo_data["cyber_events"],
+        )
+        result = predictor.predict_single(features)
+        result["account_id"] = account_id
+        result["feature_count"] = len(features)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ML prediction failed: {str(e)}")
+
+
+@app.get("/api/ml/graph-classification")
+async def ml_graph_classification():
+    """Run temporal GNN classification on the current transaction graph."""
+    _ensure_demo_data()
+
+    try:
+        from .ml.temporal_gnn import classify_graph_nodes
+        labels = classify_graph_nodes(
+            _demo_data["transactions"],
+            known_victims={"acc_victim_1", "acc_victim_2"},
+        )
+        # Store labels for graph endpoint to use
+        _demo_data["ml_node_labels"] = labels
+
+        # Convert NodeLabel enums to strings
+        result = {}
+        for node_id, label in labels.items():
+            result[node_id] = label.value if hasattr(label, 'value') else str(label)
+
+        # Count by type
+        counts = {}
+        for label in result.values():
+            counts[label] = counts.get(label, 0) + 1
+
+        return {
+            "classifications": result,
+            "counts": counts,
+            "total_nodes": len(result),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Graph classification failed: {str(e)}")
+
+
+@app.post("/api/ml/retrain")
+async def ml_retrain():
+    """Retrain all ML models on fresh synthetic data."""
+    try:
+        from .ml.fraud_models import FraudMLPredictor
+        from .ml.temporal_gnn import TemporalGNNClassifier
+
+        # Create new model instances and train
+        predictor = FraudMLPredictor()
+        pred_metrics = predictor.train_all()
+
+        gnn = TemporalGNNClassifier()
+        gnn_metrics = gnn.train()
+
+        # Update globals
+        import app.ml.fraud_models as fm
+        import app.ml.temporal_gnn as tg
+        fm._predictor = predictor
+        tg._gnn_classifier = gnn
+
+        return {
+            "success": True,
+            "fraud_predictor": pred_metrics,
+            "temporal_gnn": gnn_metrics,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

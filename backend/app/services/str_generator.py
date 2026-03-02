@@ -98,10 +98,12 @@ def generate_str_pdf(
             ("Cyber Risk Score", "cyber_score"),
             ("Financial Risk Score", "financial_score"),
             ("Graph Intelligence Score", "graph_score"),
+            ("ML Fraud Score", "ml_score"),
             ("Unified Risk Score", "unified_score"),
         ]:
-            val = score_details.get(key, "N/A")
-            pdf.cell(0, 6, _safe_text(f"  {label}: {val}"), new_x="LMARGIN", new_y="NEXT")
+            val = score_details.get(key)
+            if val is not None:
+                pdf.cell(0, 6, _safe_text(f"  {label}: {val}"), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(4)
 
     # ── Cyber Events ──────────────────────────────────────────

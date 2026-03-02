@@ -210,6 +210,45 @@ export interface LiveEvent {
 export const fetchLiveEvent = () =>
   request<LiveEvent>("/simulation/live-event");
 
+/* ── User Live Simulation (end-user dashboard polling) ───── */
+export interface UserLiveEvent {
+  tick: number;
+  timestamp: string;
+  account_id: string;
+  is_anomaly: boolean;
+  cyber_event: any;
+  transaction: any;
+  risk_scores: {
+    cyber_score: number;
+    financial_score: number;
+    graph_score: number;
+    unified_score: number;
+  };
+  risk_level: "low" | "medium" | "high";
+  changes: string[];
+  warnings: Array<{
+    type: string;
+    severity: "info" | "warning" | "high" | "critical";
+    title: string;
+    detail: string;
+    action: string;
+  }>;
+  procedures: string[];
+  risk_trend: Array<{ time: string; risk: number }>;
+  requires_gemini: boolean;
+  gemini_analysis?: {
+    explanation: string;
+    urgency: "safe" | "caution" | "dangerous";
+    confidence: number;
+    steps_to_take: string[];
+    prevention_tips: string[];
+    should_contact_bank: boolean;
+  };
+}
+
+export const fetchUserLiveEvent = (accountId: string) =>
+  request<UserLiveEvent>(`/simulation/user-event/${accountId}`);
+
 /* ── New User Data Generation ────────────────────────────── */
 export const generateUserData = (accountId: string, email: string = "") =>
   request<any>("/user/generate-data", {

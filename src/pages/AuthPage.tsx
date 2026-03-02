@@ -51,12 +51,17 @@ export default function AuthPage() {
         }
         await signUp(email, password, displayName, role);
       }
-      // Navigate based on role after auth state updates
-      navigate(role === "financial_institution" ? "/bank" : "/user");
+      // Navigate based on selected role
+      setTimeout(() => {
+        navigate(role === "financial_institution" ? "/bank" : "/user");
+      }, 100);
     } catch (err: any) {
       const msg = err?.message ?? "Authentication failed";
       // Map Firebase errors to friendly messages
-      if (msg.includes("auth/email-already-in-use"))
+      if (msg.includes("Firebase not configured")) {
+        // Should not happen anymore, but handle gracefully
+        setError("Service temporarily unavailable. Please use Demo Access below.");
+      } else if (msg.includes("auth/email-already-in-use"))
         setError("This email is already registered. Try logging in.");
       else if (msg.includes("auth/invalid-credential"))
         setError("Invalid email or password.");

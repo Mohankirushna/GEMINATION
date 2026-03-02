@@ -11,11 +11,25 @@ import {
 } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Layout from "./components/Layout";
-import LandingPage from "./pages/LandingPage";
-import AuthPage from "./pages/AuthPage";
-import BankDashboard from "./pages/BankDashboard";
-import NetworkGraph from "./pages/NetworkGraph";
-import UserDashboard from "./pages/UserDashboard";
+import React, { Suspense } from "react";
+
+// Lazy load heavy pages for faster initial load
+const LandingPage = React.lazy(() => import("./pages/LandingPage"));
+const AuthPage = React.lazy(() => import("./pages/AuthPage"));
+const BankDashboard = React.lazy(() => import("./pages/BankDashboard"));
+const NetworkGraph = React.lazy(() => import("./pages/NetworkGraph"));
+const UserDashboard = React.lazy(() => import("./pages/UserDashboard"));
+
+function PageLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[#0a0e1a]">
+      <div className="flex flex-col items-center gap-4">
+        <div className="h-10 w-10 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin" />
+        <span className="text-sm text-slate-500">Loading module...</span>
+      </div>
+    </div>
+  );
+}
 
 function ProtectedRoute({
   children,
@@ -57,6 +71,7 @@ function AppRoutes() {
   const { profile, loading } = useAuth();
 
   return (
+    <Suspense fallback={<PageLoader />}>
     <Routes>
       {/* Public routes */}
       <Route path="/" element={<Layout />}>
@@ -135,6 +150,7 @@ function AppRoutes() {
       {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 

@@ -488,6 +488,403 @@ def generate_initial_data_for_user(account_id: str, email: str = "") -> dict:
     }
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# USER-SPECIFIC LIVE SIMULATION (End-user dashboard polling)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+_user_sim_state: dict = {}
+
+
+def _get_user_state(account_id: str) -> dict:
+    """Get or create per-user simulation state."""
+    if account_id not in _user_sim_state:
+        home_city = random.choice(INDIAN_CITIES[:5])  # consistent home location
+        home_device = f"dev_{account_id}_primary"
+        _user_sim_state[account_id] = {
+            "tick": 0,
+            "home_city": home_city,
+            "last_city": home_city,
+            "home_device": home_device,
+            "last_device": home_device,
+            "risk_trend": [],
+            "active_alerts": [],
+            "last_txn_time": _now(),
+            "txn_count_window": 0,  # transactions in last 5 ticks
+            "baseline_amount": random.choice([1000, 2000, 3000, 5000]),
+        }
+    return _user_sim_state[account_id]
+
+
+def generate_user_live_event(account_id: str) -> dict:
+    """
+    Generate one simulation tick for end-user dashboard.
+    Simulates realistic user activity with occasional anomalies:
+    - Geolocation changes (travel vs impossible travel)
+    - Login from new/unusual devices
+    - Transaction velocity spikes
+    - Transaction amount anomalies
+
+    40% chance of anomaly per tick to keep it interesting.
+    """
+    state = _get_user_state(account_id)
+    state["tick"] += 1
+    tick = state["tick"]
+
+    # Decide: 40% anomaly, 60% normal
+    is_anomaly = random.random() < 0.4
+    changes: list[str] = []
+    warnings: list[dict] = []
+    procedures: list[str] = []
+
+    # ── Generate Cyber Event ──
+    if is_anomaly:
+        anomaly_type = random.choice([
+            "geo_change", "geo_change",  # weighted more
+            "new_device",
+            "login_velocity",
+            "impossible_travel",
+        ])
+
+        if anomaly_type == "geo_change":
+            new_city = random.choice([c for c in INDIAN_CITIES if c != state["last_city"]])
+            cyber_event = CyberEvent(
+                id=_generate_id("uce"),
+                account_id=account_id,
+                device_id=state["home_device"],
+                event_type=EventType.LOGIN,
+                ip_geo=new_city,
+                timestamp=_now(),
+                anomaly_score=round(random.uniform(0.3, 0.55), 2),
+                raw_signals={
+                    "scenario": "geo_change",
+                    "previous_location": state["last_city"],
+                    "new_location": new_city,
+                    "travel_likely": True,
+                },
+            )
+            changes.append(f"Location changed: {state['last_city']} → {new_city}")
+            warnings.append({
+                "type": "geo_change",
+                "severity": "info",
+                "title": "Login Location Change",
+                "detail": f"Your account was accessed from {new_city}, previously active in {state['last_city']}.",
+                "action": "If this was you travelling, no action needed. Otherwise, secure your account immediately.",
+            })
+            procedures.append("Review your recent login locations under 'Device Activity'")
+            procedures.append("If unrecognized, change your password and enable 2FA")
+            state["last_city"] = new_city
+
+        elif anomaly_type == "impossible_travel":
+            far_city = random.choice([c for c in INDIAN_CITIES if c != state["last_city"]])
+            time_diff = random.randint(1, 10)
+            cyber_event = CyberEvent(
+                id=_generate_id("uce"),
+                account_id=account_id,
+                device_id=state["home_device"],
+                event_type=EventType.IMPOSSIBLE_TRAVEL,
+                ip_geo=far_city,
+                timestamp=_now(),
+                anomaly_score=round(random.uniform(0.75, 0.95), 2),
+                raw_signals={
+                    "scenario": "impossible_travel",
+                    "origin": state["last_city"],
+                    "destination": far_city,
+                    "time_diff_min": time_diff,
+                },
+            )
+            changes.append(f"⚠ Impossible travel: {state['last_city']} → {far_city} in {time_diff} min")
+            warnings.append({
+                "type": "impossible_travel",
+                "severity": "critical",
+                "title": "Impossible Travel Detected",
+                "detail": f"Login detected from {far_city} just {time_diff} minutes after activity from {state['last_city']}. This is physically impossible.",
+                "action": "Your account may be compromised. Change password immediately and review all recent transactions.",
+            })
+            procedures.append("Change your password immediately")
+            procedures.append("Enable two-factor authentication (2FA)")
+            procedures.append("Review and revoke any unrecognized active sessions")
+            procedures.append("Contact your bank's helpline to report unauthorized access")
+            state["last_city"] = far_city
+
+        elif anomaly_type == "new_device":
+            new_device = f"dev_unknown_{random.randint(100, 999)}"
+            city = random.choice(INDIAN_CITIES)
+            cyber_event = CyberEvent(
+                id=_generate_id("uce"),
+                account_id=account_id,
+                device_id=new_device,
+                event_type=EventType.NEW_DEVICE,
+                ip_geo=city,
+                timestamp=_now(),
+                anomaly_score=round(random.uniform(0.45, 0.7), 2),
+                raw_signals={
+                    "scenario": "new_device",
+                    "known_device": state["home_device"],
+                    "new_device": new_device,
+                    "location": city,
+                },
+            )
+            changes.append(f"New device login: {new_device} from {city}")
+            warnings.append({
+                "type": "new_device",
+                "severity": "warning",
+                "title": "Login from Unrecognized Device",
+                "detail": f"A new device ({new_device}) logged into your account from {city}.",
+                "action": "If you don't recognize this device, secure your account.",
+            })
+            procedures.append("Check if you recently set up a new phone or browser")
+            procedures.append("If unrecognized, go to Settings → Active Sessions → Revoke access")
+            procedures.append("Change your password as a precaution")
+            state["last_device"] = new_device
+
+        else:  # login_velocity
+            attempts = random.randint(5, 15)
+            failed = random.randint(3, attempts)
+            cyber_event = CyberEvent(
+                id=_generate_id("uce"),
+                account_id=account_id,
+                device_id=f"dev_brute_{random.randint(1, 50)}",
+                event_type=EventType.LOGIN,
+                ip_geo=random.choice(INDIAN_CITIES),
+                timestamp=_now(),
+                anomaly_score=round(random.uniform(0.6, 0.85), 2),
+                raw_signals={
+                    "scenario": "login_velocity",
+                    "login_velocity": attempts,
+                    "failed_attempts": failed,
+                },
+            )
+            changes.append(f"Login velocity spike: {attempts} attempts ({failed} failed) in 5 min")
+            warnings.append({
+                "type": "login_velocity",
+                "severity": "high",
+                "title": "Suspicious Login Activity",
+                "detail": f"Detected {attempts} login attempts ({failed} failed) within 5 minutes. This may indicate a brute-force attack.",
+                "action": "Change your password immediately. Your account may be under attack.",
+            })
+            procedures.append("Change your password immediately — use a strong, unique password")
+            procedures.append("Enable 2FA if not already active")
+            procedures.append("Check for any unauthorized transactions made during this period")
+    else:
+        # Normal login from home
+        cyber_event = CyberEvent(
+            id=_generate_id("uce"),
+            account_id=account_id,
+            device_id=state["home_device"],
+            event_type=EventType.LOGIN,
+            ip_geo=state["home_city"],
+            timestamp=_now(),
+            anomaly_score=round(random.uniform(0.01, 0.08), 2),
+            raw_signals={"scenario": "normal_activity"},
+        )
+
+    # ── Generate Financial Transaction ──
+    if is_anomaly and random.random() < 0.6:
+        # Anomalous transaction
+        txn_type = random.choice(["velocity_spike", "unusual_amount", "new_beneficiary"])
+
+        if txn_type == "velocity_spike":
+            # Multiple rapid transactions
+            state["txn_count_window"] += random.randint(3, 8)
+            amount = random.choice([5000, 10000, 15000, 20000, 25000])
+            transaction = FinancialTransaction(
+                id=_generate_id("utx"),
+                sender=account_id,
+                receiver=f"acc_unknown_{random.randint(100, 999)}",
+                amount=amount,
+                method=TxMethod.UPI,
+                timestamp=_now(),
+                velocity_score=round(random.uniform(0.6, 0.85), 2),
+                risk_flags=["velocity_spike", "rapid_transfers"],
+            )
+            changes.append(f"Transaction velocity spike: {state['txn_count_window']} txns in review window")
+            warnings.append({
+                "type": "txn_velocity",
+                "severity": "high",
+                "title": "Unusual Transaction Frequency",
+                "detail": f"{state['txn_count_window']} transactions detected in a short period. Normal baseline is 1-2 per day.",
+                "action": "Review your transaction history. If unauthorized, freeze your account via the app or call your bank.",
+            })
+            procedures.append("Open your bank app → Transaction History → Review last 24 hours")
+            procedures.append("If you see unknown transactions, tap 'Report Fraud' or call your bank")
+
+        elif txn_type == "unusual_amount":
+            # Amount way above baseline
+            multiplier = random.choice([5, 10, 15, 20])
+            amount = state["baseline_amount"] * multiplier
+            transaction = FinancialTransaction(
+                id=_generate_id("utx"),
+                sender=account_id,
+                receiver=random.choice(["merchant_luxury", "acc_overseas_1", f"acc_new_{random.randint(1,99)}"]),
+                amount=amount,
+                method=random.choice([TxMethod.IMPS, TxMethod.NEFT]),
+                timestamp=_now(),
+                velocity_score=round(random.uniform(0.5, 0.75), 2),
+                risk_flags=["unusual_amount", "amount_exceeds_baseline"],
+            )
+            changes.append(f"Unusual transaction amount: ₹{amount:,} (baseline: ₹{state['baseline_amount']:,})")
+            warnings.append({
+                "type": "unusual_amount",
+                "severity": "warning",
+                "title": "Large Transaction Detected",
+                "detail": f"Transaction of ₹{amount:,} is {multiplier}x your typical amount of ₹{state['baseline_amount']:,}.",
+                "action": "If this was intentional, no action needed. Otherwise, report immediately.",
+            })
+            procedures.append("Verify this transaction in your bank statement")
+            procedures.append("If unauthorized, contact your bank immediately to reverse the transaction")
+
+        else:  # new_beneficiary
+            new_acct = f"acc_new_beneficiary_{random.randint(100, 999)}"
+            amount = random.choice([10000, 25000, 50000])
+            transaction = FinancialTransaction(
+                id=_generate_id("utx"),
+                sender=account_id,
+                receiver=new_acct,
+                amount=amount,
+                method=TxMethod.UPI,
+                timestamp=_now(),
+                velocity_score=round(random.uniform(0.4, 0.65), 2),
+                risk_flags=["new_beneficiary", "first_time_transfer"],
+            )
+            changes.append(f"First transfer to new beneficiary: {new_acct} (₹{amount:,})")
+            warnings.append({
+                "type": "new_beneficiary",
+                "severity": "info",
+                "title": "Transfer to New Beneficiary",
+                "detail": f"First-time transfer of ₹{amount:,} to {new_acct}. New beneficiaries are flagged for review.",
+                "action": "Verify the recipient's identity before future transfers.",
+            })
+    else:
+        # Normal transaction
+        merchants = ["merchant_grocery", "merchant_fuel", "merchant_online", "merchant_recharge", "merchant_utility"]
+        amount = random.choice([150, 250, 500, 850, 1200, 2000])
+        transaction = FinancialTransaction(
+            id=_generate_id("utx"),
+            sender=account_id,
+            receiver=random.choice(merchants),
+            amount=amount,
+            method=TxMethod.UPI,
+            timestamp=_now(),
+            velocity_score=round(random.uniform(0.01, 0.08), 2),
+            risk_flags=[],
+        )
+        state["txn_count_window"] = max(0, state["txn_count_window"] - 1)
+
+    # ── Compute risk scores ──
+    cyber_score = cyber_event.anomaly_score
+    financial_score = transaction.velocity_score
+    graph_score = round(random.uniform(0.01, 0.15), 2) if not is_anomaly else round(random.uniform(0.2, 0.5), 2)
+    unified_score = compute_unified_score(cyber_score, financial_score, graph_score)
+
+    # Determine risk level
+    if unified_score >= 0.7:
+        risk_level = "high"
+    elif unified_score >= 0.4:
+        risk_level = "medium"
+    else:
+        risk_level = "low"
+
+    # ── Build Gemini prompt for user-facing explanation when risk > 0.4 ──
+    gemini_prompt = None
+    if unified_score > 0.4 and changes:
+        gemini_prompt = _build_user_explainability_prompt(
+            account_id, cyber_event, transaction, unified_score,
+            cyber_score, financial_score, graph_score, changes, warnings
+        )
+
+    # ── Update risk trend ──
+    time_str = _now().strftime("%H:%M:%S")
+    state["risk_trend"].append({
+        "time": time_str,
+        "risk": unified_score,
+    })
+    if len(state["risk_trend"]) > 20:
+        state["risk_trend"] = state["risk_trend"][-20:]
+
+    return {
+        "tick": tick,
+        "timestamp": _now().isoformat(),
+        "account_id": account_id,
+        "is_anomaly": is_anomaly,
+        "cyber_event": cyber_event.model_dump(mode="json"),
+        "transaction": transaction.model_dump(mode="json"),
+        "risk_scores": {
+            "cyber_score": cyber_score,
+            "financial_score": financial_score,
+            "graph_score": graph_score,
+            "unified_score": unified_score,
+        },
+        "risk_level": risk_level,
+        "changes": changes,
+        "warnings": warnings,
+        "procedures": procedures,
+        "risk_trend": list(state["risk_trend"]),
+        "gemini_prompt": gemini_prompt,
+        "requires_gemini": unified_score > 0.4 and len(changes) > 0,
+    }
+
+
+def _build_user_explainability_prompt(
+    account_id: str,
+    cyber_event: CyberEvent,
+    transaction: FinancialTransaction,
+    unified_score: float,
+    cyber_score: float,
+    financial_score: float,
+    graph_score: float,
+    changes: list,
+    warnings: list,
+) -> str:
+    """Build a Gemini prompt for user-friendly security explanation."""
+    parts = [
+        "You are a friendly cybersecurity assistant for an Indian banking app called SurakshaFlow.",
+        "A user's account has triggered security alerts. Explain the situation to a non-technical end user.",
+        "Be reassuring but honest. Use simple language. No jargon.\n",
+        "=== SECURITY ALERT ===",
+        f"Account: {account_id}",
+        f"Risk Level: {'HIGH' if unified_score >= 0.7 else 'MEDIUM' if unified_score >= 0.4 else 'LOW'}",
+        f"Risk Score: {unified_score:.2f}\n",
+        "=== WHAT HAPPENED ===",
+    ]
+
+    for change in changes:
+        parts.append(f"  • {change}")
+
+    if warnings:
+        parts.append("\n=== WARNING DETAILS ===")
+        for w in warnings:
+            parts.append(f"  [{w['severity'].upper()}] {w['title']}: {w['detail']}")
+
+    parts.extend([
+        f"\n=== TECHNICAL DETAILS ===",
+        f"Cyber Event: {cyber_event.event_type.value} (score: {cyber_score:.2f})",
+        f"Transaction: ₹{transaction.amount:,} to {transaction.receiver} (velocity: {financial_score:.2f})",
+        f"Device: {cyber_event.device_id} at {cyber_event.ip_geo}",
+    ])
+
+    parts.extend([
+        "\n=== INSTRUCTIONS ===",
+        "Provide the following for the END USER (not a bank officer):",
+        "",
+        "1. **Explanation**: In 2-3 simple sentences, explain what happened and why the alert was raised",
+        "2. **Is this dangerous?**: Rate the urgency — safe / caution / dangerous",
+        "3. **What should I do?**: 3-5 specific step-by-step actions the user should take right now",
+        "4. **How to prevent this**: 2-3 tips to stay safe in the future",
+        "",
+        "Respond ONLY as a JSON object:",
+        '{',
+        '  "explanation": "Simple explanation for the user",',
+        '  "urgency": "safe|caution|dangerous",',
+        '  "confidence": 0.0 to 1.0,',
+        '  "steps_to_take": ["step1", "step2", ...],',
+        '  "prevention_tips": ["tip1", "tip2", ...],',
+        '  "should_contact_bank": true/false',
+        '}',
+    ])
+
+    return "\n".join(parts)
+
+
 def analyze_email_for_phishing(email_content: str, sender_email: str = "") -> dict:
     """
     Rule-based pre-analysis of email content for phishing indicators.
