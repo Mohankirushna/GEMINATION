@@ -175,3 +175,61 @@ export const seedDemo = () =>
 
 export const runScenario = () =>
   request<{ status: string }>("/demo/run-scenario", { method: "POST" });
+
+/* ── Live Simulation (polls every 5 seconds) ─────────────── */
+export interface LiveEvent {
+  tick: number;
+  timestamp: string;
+  scenario_type: "money_laundering" | "clean";
+  is_suspicious: boolean;
+  cyber_event: any;
+  transaction: any;
+  risk_scores: {
+    cyber_score: number;
+    financial_score: number;
+    graph_score: number;
+    unified_score: number;
+  };
+  changes: string[];
+  alert: any | null;
+  risk_trend: Array<{ time: string; risk: number; alerts?: number }>;
+  gemini_prompt: string | null;
+  requires_gemini: boolean;
+  gemini_analysis?: {
+    explanation: string;
+    recommendation: string;
+    confidence: number;
+    key_indicators: string[];
+    regulatory_references?: string[];
+    immediate_steps?: string[];
+    accounts_to_freeze?: string[];
+    str_required?: boolean;
+  };
+}
+
+export const fetchLiveEvent = () =>
+  request<LiveEvent>("/simulation/live-event");
+
+/* ── New User Data Generation ────────────────────────────── */
+export const generateUserData = (accountId: string, email: string = "") =>
+  request<any>("/user/generate-data", {
+    method: "POST",
+    body: JSON.stringify({ account_id: accountId, email }),
+  });
+
+/* ── Email Phishing Analysis ─────────────────────────────── */
+export interface EmailAnalysisResult {
+  is_phishing: boolean;
+  confidence: number;
+  explanation: string;
+  risk_indicators: string[];
+  recommended_action: string;
+  threat_type: string;
+  analysis_source: string;
+}
+
+export const analyzeEmail = (emailContent: string, senderEmail: string = "", subject: string = "") =>
+  request<EmailAnalysisResult>("/gemini/analyze-email", {
+    method: "POST",
+    body: JSON.stringify({ email_content: emailContent, sender_email: senderEmail, subject }),
+  });

@@ -504,7 +504,7 @@ async def download_str(report_id: str):
         raise HTTPException(status_code=404, detail="Report not found")
 
     return Response(
-        content=pdf_bytes,
+        content=bytes(pdf_bytes),
         media_type="application/pdf",
         headers={
             "Content-Disposition": f"attachment; filename=STR_{report_id}.pdf",
@@ -568,6 +568,215 @@ async def demo_run_scenario():
             {"t": "T+18min", "event": "Unified Risk Score > 0.9 → Gemini explanation generated"},
             {"t": "T+20min", "event": "Alert created → Bank dashboard updated"},
         ],
+    }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# LIVE SIMULATION (Dynamic 5-second polling)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@app.get("/api/simulation/live-event")
+async def live_event():
+    """
+    Generate a single simulation tick with random ML/non-ML activity.
+    Frontend polls this every 5 seconds for dynamic dashboard updates.
+    """
+    _ensure_demo_data()
+    from .services.live_simulation import generate_live_event
+
+    event = generate_live_event()
+
+    # If high risk and Gemini is enabled, get AI explanation
+    if event["requires_gemini"] and ENABLE_GEMINI and event.get("gemini_prompt"):
+        try:
+            from .services.gemini_service import _get_client, _rate_limit_check, _record_call
+            import json as _json
+
+            client = _get_client()
+            if client and _rate_limit_check():
+                _record_call()
+                from google.genai import types
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=event["gemini_prompt"],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.3,
+                    ),
+                )
+                if response.text:
+                    clean_text = response.text.strip()
+                    if clean_text.startswith("```json"):
+                        clean_text = clean_text[7:]
+                    if clean_text.startswith("```"):
+                        clean_text = clean_text[3:]
+                    if clean_text.endswith("```"):
+                        clean_text = clean_text[:-3]
+                    gemini_result = _json.loads(clean_text.strip())
+                    event["gemini_analysis"] = gemini_result
+
+                    # Update the alert with Gemini explanation
+                    if event.get("alert"):
+                        event["alert"]["gemini_explanation"] = gemini_result.get("explanation", "")
+                        event["alert"]["recommended_action"] = gemini_result.get("recommendation", "")
+        except Exception as e:
+            logger.warning("Gemini live analysis failed: %s", str(e))
+            # Provide fallback analysis
+            event["gemini_analysis"] = {
+                "explanation": f"High-risk activity detected (score: {event['risk_scores']['unified_score']:.2f}). "
+                               f"Changes: {'; '.join(event.get('changes', []))}",
+                "recommendation": "Immediately review flagged accounts and consider freezing pending investigation.",
+                "confidence": 0.7,
+                "key_indicators": event.get("changes", []),
+                "str_required": event["risk_scores"]["unified_score"] > 0.8,
+            }
+
+    # Inject the new event into the in-memory demo data store
+    if event.get("alert"):
+        alert_id = event["alert"]["id"]
+        # Create a proper Alert model for storage
+        try:
+            from .models import Alert as AlertModel, Severity as SeverityModel, AlertStatus as AlertStatusModel
+            alert_obj = AlertModel(
+                id=alert_id,
+                accounts_flagged=event["alert"]["accounts_flagged"],
+                severity=SeverityModel(event["alert"]["severity"]),
+                status=AlertStatusModel.NEW,
+                unified_risk_score=event["alert"]["unified_risk_score"],
+                cyber_events=[CyberEvent(**event["cyber_event"])],
+                financial_transactions=[FinancialTransaction(**event["transaction"])],
+                gemini_explanation=event["alert"].get("gemini_explanation", ""),
+                recommended_action=event["alert"].get("recommended_action", ""),
+                created_at=datetime.fromisoformat(event["alert"]["created_at"]),
+            )
+            _demo_data["alerts"][alert_id] = alert_obj
+        except Exception as e:
+            logger.warning("Failed to store live alert: %s", str(e))
+
+    return event
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# NEW USER DATA GENERATION
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class NewUserRequest(BaseModel):
+    account_id: str
+    email: str = ""
+
+
+@app.post("/api/user/generate-data")
+async def generate_user_data(req: NewUserRequest):
+    """Generate initial dynamic data for a newly signed-up user."""
+    from .services.live_simulation import generate_initial_data_for_user
+
+    data = generate_initial_data_for_user(req.account_id, req.email)
+
+    # Store in demo data
+    _ensure_demo_data()
+    account_id = req.account_id
+
+    # Add risk event
+    from .models import RiskEvent as RiskEventModel
+    re = RiskEventModel(**data["risk_event"])
+    _demo_data["risk_events"][account_id] = re
+
+    return data
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# EMAIL PHISHING ANALYSIS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class EmailAnalysisRequest(BaseModel):
+    email_content: str
+    sender_email: str = ""
+    subject: str = ""
+
+
+@app.post("/api/gemini/analyze-email")
+async def analyze_email(req: EmailAnalysisRequest):
+    """Analyze an email for phishing/spam indicators."""
+    from .services.live_simulation import analyze_email_for_phishing
+
+    # First do rule-based pre-analysis
+    pre_analysis = analyze_email_for_phishing(req.email_content, req.sender_email)
+
+    # If Gemini is enabled, get AI analysis
+    if ENABLE_GEMINI:
+        try:
+            from .services.gemini_service import _get_client, _rate_limit_check, _record_call
+            import json as _json
+
+            client = _get_client()
+            if client and _rate_limit_check():
+                _record_call()
+                prompt = f"""You are a cybersecurity expert specializing in email phishing and financial fraud detection.
+
+Analyze this email for phishing, spam, or fraud indicators:
+
+Subject: {req.subject}
+From: {req.sender_email}
+Content:
+\"\"\"{req.email_content}\"\"\"
+
+Pre-analysis indicators found: {pre_analysis['indicators']}
+
+Consider:
+- Urgency or threatening language
+- Suspicious links or domains
+- Request for personal/financial information
+- Impersonation of known organizations
+- Grammar and formatting anomalies
+- Social engineering tactics
+- Attachment-based threats
+- Spoofed sender addresses
+
+Respond ONLY as JSON:
+{{
+  "is_phishing": true/false,
+  "confidence": 0.0 to 1.0,
+  "explanation": "Detailed explanation of findings",
+  "risk_indicators": ["indicator1", "indicator2"],
+  "recommended_action": "What the user should do",
+  "threat_type": "phishing|spam|scam|legitimate|unknown"
+}}"""
+                from google.genai import types
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.2,
+                    ),
+                )
+                if response.text:
+                    clean_text = response.text.strip()
+                    if clean_text.startswith("```json"):
+                        clean_text = clean_text[7:]
+                    if clean_text.startswith("```"):
+                        clean_text = clean_text[3:]
+                    if clean_text.endswith("```"):
+                        clean_text = clean_text[:-3]
+                    gemini_result = _json.loads(clean_text.strip())
+                    return {
+                        **gemini_result,
+                        "analysis_source": "gemini_ai",
+                        "pre_analysis": pre_analysis,
+                    }
+        except Exception as e:
+            logger.warning("Gemini email analysis failed: %s", str(e))
+
+    # Fallback to rule-based analysis
+    return {
+        "is_phishing": pre_analysis["is_phishing"],
+        "confidence": pre_analysis["risk_score"],
+        "explanation": pre_analysis["summary"],
+        "risk_indicators": pre_analysis["indicators"],
+        "recommended_action": "Delete this email and do not click any links." if pre_analysis["is_phishing"] else "This email appears safe, but remain vigilant.",
+        "threat_type": "phishing" if pre_analysis["is_phishing"] else "legitimate",
+        "analysis_source": "rule_based",
+        "pre_analysis": pre_analysis,
     }
 
 

@@ -71,7 +71,7 @@ function AppRoutes() {
                 replace
               />
             ) : (
-              <LandingPage />
+              <Navigate to="/auth" replace />
             )
           }
         />
@@ -101,14 +101,7 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="bank/alerts"
-          element={
-            <ProtectedRoute requiredRole="financial_institution">
-              <BankDashboard />
-            </ProtectedRoute>
-          }
-        />
+
         <Route
           path="bank/graph"
           element={

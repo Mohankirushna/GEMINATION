@@ -23,6 +23,7 @@ import {
   initializeFirebase,
 } from "../services/firebase";
 import { UserRole, UserProfile } from "../types";
+import { generateUserData } from "../services/api";
 
 interface AuthState {
   user: FirebaseUser | null;
@@ -165,6 +166,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         linked_accounts: [],
         created_at: new Date().toISOString(),
       });
+      // Generate dynamic demo data for the new user in the backend
+      try {
+        const accountId = `acc_${cred.user.uid.slice(0, 8)}`;
+        await generateUserData(accountId, email);
+      } catch {
+        // non-critical — dashboard still works with demo data
+      }
     } catch (e: any) {
       setState((s) => ({ ...s, loading: false, error: e.message }));
       throw e;
@@ -189,6 +197,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           linked_accounts: [],
           created_at: new Date().toISOString(),
         });
+        // Generate dynamic demo data for new Google sign-in user
+        try {
+          const accountId = `acc_${cred.user.uid.slice(0, 8)}`;
+          await generateUserData(accountId, cred.user.email ?? "");
+        } catch {
+          // non-critical
+        }
       }
     } catch (e: any) {
       setState((s) => ({ ...s, loading: false, error: e.message }));

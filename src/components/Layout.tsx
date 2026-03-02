@@ -31,11 +31,6 @@ const bankNav: NavItem[] = [
     exact: true,
   },
   {
-    label: "Live Alerts",
-    path: "/bank/alerts",
-    icon: <ShieldAlert className="h-4 w-4" />,
-  },
-  {
     label: "Network Graph",
     path: "/bank/graph",
     icon: <Network className="h-4 w-4" />,

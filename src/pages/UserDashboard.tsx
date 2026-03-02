@@ -5,6 +5,7 @@ import {
   Smartphone,
   CreditCard,
   MessageSquareWarning,
+  Mail,
   Send,
   ArrowRight,
   Loader2,
@@ -22,7 +23,7 @@ import {
   UserRiskResponse,
   SMSAnalysisResult,
 } from "../types";
-import { fetchUserRisk, fetchUserEvents, analyzeSMS } from "../services/api";
+import { fetchUserRisk, fetchUserEvents, analyzeSMS, analyzeEmail, type EmailAnalysisResult } from "../services/api";
 import GlassCard from "../components/GlassCard";
 import RiskGauge from "../components/RiskGauge";
 import LoadingSkeleton from "../components/LoadingSkeleton";
@@ -42,6 +43,13 @@ export default function UserDashboard() {
   const [smsText, setSmsText] = useState("");
   const [smsResult, setSmsResult] = useState<SMSAnalysisResult | null>(null);
   const [smsLoading, setSmsLoading] = useState(false);
+
+  // Email Analyzer
+  const [emailContent, setEmailContent] = useState("");
+  const [emailSender, setEmailSender] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailResult, setEmailResult] = useState<EmailAnalysisResult | null>(null);
+  const [emailLoading, setEmailLoading] = useState(false);
 
   // Real-time Firestore risk listener
   const rtRisk = useRealtimeUserRisk(DEMO_ACCOUNT);
@@ -96,6 +104,27 @@ export default function UserDashboard() {
       });
     }
     setSmsLoading(false);
+  };
+
+  const handleEmailCheck = async () => {
+    if (!emailContent.trim()) return;
+    setEmailLoading(true);
+    setEmailResult(null);
+    try {
+      const result = await analyzeEmail(emailContent, emailSender, emailSubject);
+      setEmailResult(result);
+    } catch {
+      setEmailResult({
+        is_phishing: false,
+        confidence: 0,
+        explanation: "Unable to analyze — API unavailable.",
+        risk_indicators: [],
+        recommended_action: "Please try again later.",
+        threat_type: "unknown",
+        analysis_source: "error",
+      });
+    }
+    setEmailLoading(false);
   };
 
   const riskScore = risk?.unified_score ?? 0.65;
@@ -341,6 +370,110 @@ export default function UserDashboard() {
               smsResult.risk_indicators.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-3">
                   {smsResult.risk_indicators.map((ind, i) => (
+                    <span
+                      key={i}
+                      className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/[0.06]"
+                    >
+                      {ind}
+                    </span>
+                  ))}
+                </div>
+              )}
+          </div>
+        )}
+      </GlassCard>
+
+      {/* ── Email Phishing Analyzer ─────────────────────── */}
+      <GlassCard hover={false} className="p-5">
+        <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+          <Mail className="h-4 w-4 text-red-400" />
+          Email Phishing Detector
+          <span className="text-[10px] font-normal text-slate-500">
+            Powered by Gemini AI
+          </span>
+        </h3>
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input
+              type="email"
+              value={emailSender}
+              onChange={(e) => setEmailSender(e.target.value)}
+              placeholder="Sender email (optional)"
+              className="auth-input"
+            />
+            <input
+              type="text"
+              value={emailSubject}
+              onChange={(e) => setEmailSubject(e.target.value)}
+              placeholder="Subject line (optional)"
+              className="auth-input"
+            />
+          </div>
+          <textarea
+            value={emailContent}
+            onChange={(e) => setEmailContent(e.target.value)}
+            placeholder="Paste the suspicious email content here..."
+            className="auth-input w-full min-h-[100px] resize-y"
+            rows={4}
+          />
+          <button
+            onClick={handleEmailCheck}
+            disabled={emailLoading || !emailContent.trim()}
+            className="btn-primary flex items-center gap-2 whitespace-nowrap disabled:opacity-50"
+          >
+            {emailLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+            Analyze Email
+          </button>
+        </div>
+
+        {emailResult && (
+          <div
+            className={cn(
+              "mt-4 p-4 rounded-xl border",
+              emailResult.is_phishing
+                ? "bg-red-500/5 border-red-500/15"
+                : "bg-emerald-500/5 border-emerald-500/15",
+            )}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              {emailResult.is_phishing ? (
+                <AlertTriangle className="h-4 w-4 text-red-400" />
+              ) : (
+                <CheckCircle className="h-4 w-4 text-emerald-400" />
+              )}
+              <span
+                className={cn(
+                  "text-sm font-semibold",
+                  emailResult.is_phishing ? "text-red-400" : "text-emerald-400",
+                )}
+              >
+                {emailResult.is_phishing ? "Phishing Email Detected" : "Appears Safe"}
+              </span>
+              <span className="text-xs text-slate-500 ml-auto font-mono">
+                {(emailResult.confidence * 100).toFixed(0)}% confidence
+              </span>
+            </div>
+            {emailResult.threat_type && emailResult.threat_type !== "unknown" && (
+              <p className="text-xs text-amber-400 mb-1">
+                <strong>Threat Type:</strong> {emailResult.threat_type}
+              </p>
+            )}
+            <p className="text-xs text-slate-400 leading-relaxed">
+              {emailResult.explanation}
+            </p>
+            {emailResult.recommended_action && (
+              <p className="text-xs text-cyan-400 mt-1">
+                <strong>Action:</strong> {emailResult.recommended_action}
+              </p>
+            )}
+            {emailResult.risk_indicators &&
+              emailResult.risk_indicators.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {emailResult.risk_indicators.map((ind, i) => (
                     <span
                       key={i}
                       className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/[0.06]"

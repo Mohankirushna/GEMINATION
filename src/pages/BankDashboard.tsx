@@ -1,699 +1,935 @@
-import { useState, useEffect } from "react";
+/**
+ * SurakshaFlow — Bank Intelligence Dashboard
+ * Dynamic simulation every 5s with ML/non-ML scenarios.
+ * Unified risk factor updated dynamically; Gemini explains when > 0.7.
+ */
+
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  ShieldAlert,
-  Activity,
-  Users,
-  ArrowUpRight,
-  ArrowDownRight,
-  Search,
-  Filter,
-  Sparkles,
-  FileText,
-  Zap,
-  ChevronRight,
-  Download,
-} from "lucide-react";
-import {
-  Alert,
-  DashboardSummary,
-  SimulationResult,
-  GeminiExplanation,
-} from "../types";
-import { cn } from "../lib/utils";
-import {
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  AreaChart,
-  Area,
+  BarChart,
+  Bar,
+  Cell,
 } from "recharts";
-import GlassCard from "../components/GlassCard";
-import RiskBadge, { scoreToBadgeLevel } from "../components/RiskBadge";
-import AnimatedCounter from "../components/AnimatedCounter";
-import LoadingSkeleton, { CardSkeleton } from "../components/LoadingSkeleton";
 import {
-  fetchBankSummary,
-  fetchAlerts,
+  ShieldAlert,
+  AlertTriangle,
+  Activity,
+  Network,
+  Play,
+  Pause,
+  Eye,
+  FileText,
+  MapPin,
+  Zap,
+  Brain,
+  TrendingUp,
+  TrendingDown,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  X,
+  Clock,
+  Radio,
+} from "lucide-react";
+
+import GlassCard from "../components/GlassCard";
+import AnimatedCounter from "../components/AnimatedCounter";
+import RiskBadge, { scoreToBadgeLevel } from "../components/RiskBadge";
+import RiskGauge from "../components/RiskGauge";
+import { CardSkeleton } from "../components/LoadingSkeleton";
+
+import { useSimulation } from "../services/simulationService";
+import {
+  fetchAlertDetail,
+  performAccountAction,
   explainAlert,
   generateSTR,
   getSTRDownloadUrl,
   runSimulation,
-  runScenario,
 } from "../services/api";
-import { getMockAlerts } from "../services/mockData";
-import {
-  useRealtimeAlerts,
-  useRealtimeSummary,
-} from "../services/firestoreService";
+import type { Alert, SimulationResult, GeminiExplanation } from "../types";
 
-const fallbackTrend = [
-  { time: "10:00", risk: 0.2 },
-  { time: "10:05", risk: 0.3 },
-  { time: "10:10", risk: 0.8 },
-  { time: "10:15", risk: 0.95 },
-  { time: "10:20", risk: 0.9 },
-  { time: "10:25", risk: 0.4 },
-  { time: "10:30", risk: 0.2 },
-];
+/* ────────────── helpers ────────────── */
+
+function riskColor(score: number) {
+  if (score >= 0.7) return "text-red-400";
+  if (score >= 0.4) return "text-amber-400";
+  return "text-emerald-400";
+}
+
+function riskBg(score: number) {
+  if (score >= 0.7) return "from-red-500/20 to-red-900/10 border-red-500/30";
+  if (score >= 0.4)
+    return "from-amber-500/20 to-amber-900/10 border-amber-500/30";
+  return "from-emerald-500/20 to-emerald-900/10 border-emerald-500/30";
+}
+
+function formatTime(ts: string) {
+  try {
+    return new Date(ts).toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  } catch {
+    return ts;
+  }
+}
+
+/* ━━━━━━━━━━━━━ COMPONENT ━━━━━━━━━━━━━ */
 
 export default function BankDashboard() {
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
+  /* ── Simulation hook (polls every 5 s) ── */
+  const sim = useSimulation(true);
+
+  /* ── Local UI state ── */
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
-  const [explanation, setExplanation] = useState<GeminiExplanation | null>(
-    null,
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [geminiResult, setGeminiResult] = useState<GeminiExplanation | null>(
+    null
   );
-  const [loadingExplanation, setLoadingExplanation] = useState(false);
-  const [simulation, setSimulation] = useState<SimulationResult | null>(null);
-  const [loadingSim, setLoadingSim] = useState(false);
-  const [loadingSTR, setLoadingSTR] = useState(false);
+  const [geminiLoading, setGeminiLoading] = useState(false);
   const [strUrl, setStrUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState<string>("");
+  const [strLoading, setStrLoading] = useState(false);
+  const [twinResult, setTwinResult] = useState<SimulationResult | null>(null);
+  const [twinLoading, setTwinLoading] = useState(false);
+  const [showGeminiPanel, setShowGeminiPanel] = useState(true);
 
-  // Real-time Firestore hooks (fallback gracefully when Firestore unavailable)
-  const rtAlerts = useRealtimeAlerts(filterStatus || undefined);
-  const rtSummary = useRealtimeSummary();
+  /* ── Derived data ── */
+  const currentEvent = sim.currentEvent;
+  const riskScores = currentEvent?.risk_scores;
+  const unifiedScore = riskScores?.unified_score ?? 0;
+  const geminiAnalysis = currentEvent?.gemini_analysis;
+  const changes = currentEvent?.changes ?? [];
 
-  // Merge: prefer real-time Firestore data when available, otherwise REST/mock
-  useEffect(() => {
-    if (rtAlerts.isRealtime && rtAlerts.alerts.length > 0) {
-      setAlerts(rtAlerts.alerts);
-    }
-  }, [rtAlerts.alerts, rtAlerts.isRealtime]);
+  /* ── Stat cards data ── */
+  const stats = useMemo(
+    () => [
+      {
+        label: "Total Alerts",
+        value: sim.liveAlerts.length,
+        icon: ShieldAlert,
+        color: "text-cyan-400",
+        glow: "cyan" as const,
+      },
+      {
+        label: "High Risk",
+        value: sim.highRiskCount,
+        icon: AlertTriangle,
+        color: "text-red-400",
+        glow: "red" as const,
+      },
+      {
+        label: "Monitored",
+        value: sim.transactionsMonitored,
+        icon: Activity,
+        color: "text-emerald-400",
+        glow: "emerald" as const,
+      },
+      {
+        label: "Mule Rings",
+        value: sim.activeMuleRings,
+        icon: Network,
+        color: "text-amber-400",
+        glow: "gold" as const,
+      },
+    ],
+    [
+      sim.liveAlerts.length,
+      sim.highRiskCount,
+      sim.transactionsMonitored,
+      sim.activeMuleRings,
+    ]
+  );
 
-  useEffect(() => {
-    if (rtSummary.isRealtime && rtSummary.summary) {
-      setSummary((prev) => ({
-        ...rtSummary.summary!,
-        // Keep REST transaction count & trends since Firestore summary may lack them
-        transactions_monitored:
-          rtSummary.summary!.transactions_monitored ||
-          prev?.transactions_monitored ||
-          0,
-        risk_trend: rtSummary.summary!.risk_trend?.length
-          ? rtSummary.summary!.risk_trend
-          : prev?.risk_trend || fallbackTrend,
-      }));
-    }
-  }, [rtSummary.summary, rtSummary.isRealtime]);
-
-  // Fetch data from API, fallback to mock
-  useEffect(() => {
-    (async () => {
-      try {
-        const [s, a] = await Promise.all([
-          fetchBankSummary(),
-          fetchAlerts(filterStatus || undefined),
-        ]);
-        setSummary(s);
-        setAlerts(a);
-      } catch {
-        // Fallback to mock data if API unavailable
-        setSummary({
-          total_alerts: 24,
-          high_risk_count: 8,
-          transactions_monitored: 14205,
-          active_mule_rings: 3,
-          risk_trend: fallbackTrend,
-        });
-        setAlerts(getMockAlerts());
-      }
-      setLoading(false);
-    })();
-  }, [filterStatus]);
-
-  const handleAlertClick = async (alert: Alert) => {
-    setSelectedAlert(alert);
-    setExplanation(null);
-    setSimulation(null);
+  /* ── Alert detail ── */
+  const openAlert = useCallback(async (alert: any) => {
+    setDetailLoading(true);
+    setGeminiResult(null);
     setStrUrl(null);
-    if (alert.unifiedRiskScore > 0.5) {
-      setLoadingExplanation(true);
-      try {
-        const expl = await explainAlert(alert.id);
-        setExplanation(expl);
-      } catch {
-        // Use existing explanation if API fails
-        if (alert.geminiExplanation) {
-          setExplanation({
-            explanation: alert.geminiExplanation,
-            recommendation: alert.recommendedAction || "",
-            confidence: 0.85,
-            key_indicators: [],
-          });
-        }
-      }
-      setLoadingExplanation(false);
-    }
-  };
-
-  const handleSimulation = async () => {
-    if (!selectedAlert) return;
-    setLoadingSim(true);
+    setTwinResult(null);
     try {
-      const sim = await runSimulation(selectedAlert.accountId);
-      setSimulation(sim);
+      const detail = await fetchAlertDetail(alert.id);
+      setSelectedAlert(detail);
     } catch {
-      setSimulation({
-        no_action: { downstream_accounts: 4, total_exposure: 148000 },
-        optimal_action: {
-          account_to_freeze: selectedAlert.accountId,
-          prevented_loss: 122000,
-          prevented_percentage: 82.4,
-        },
+      // Use the alert object directly if the API doesn't have it
+      setSelectedAlert({
+        id: alert.id,
+        timestamp: alert.timestamp || alert.created_at || new Date().toISOString(),
+        accountId: alert.accountId || alert.accounts_flagged?.[0] || alert.id,
+        accounts_flagged: alert.accounts_flagged,
+        unifiedRiskScore: alert.unifiedRiskScore || alert.unified_risk_score || 0,
+        cyberEvents: alert.cyberEvents || [],
+        financialTransactions: alert.financialTransactions || [],
+        status: alert.status || "new",
+        severity: alert.severity,
+        geminiExplanation: alert.geminiExplanation || alert.gemini_explanation,
+        recommendedAction: alert.recommendedAction || alert.recommended_action,
       });
+    } finally {
+      setDetailLoading(false);
     }
-    setLoadingSim(false);
-  };
+  }, []);
 
-  const handleSTR = async () => {
+  const handleExplain = useCallback(async () => {
     if (!selectedAlert) return;
-    setLoadingSTR(true);
+    setGeminiLoading(true);
     try {
-      const result = await generateSTR(selectedAlert.id);
-      setStrUrl(getSTRDownloadUrl(result.report_id));
+      const res = await explainAlert(selectedAlert.id);
+      setGeminiResult(res);
     } catch {
-      // noop
+      setGeminiResult({
+        explanation: "Unable to get AI explanation at this time.",
+        recommendation: "Please review the alert manually.",
+        confidence: 0,
+        key_indicators: [],
+      });
+    } finally {
+      setGeminiLoading(false);
     }
-    setLoadingSTR(false);
-  };
+  }, [selectedAlert]);
 
-  const trend = summary?.risk_trend ?? fallbackTrend;
+  const handleSTR = useCallback(async () => {
+    if (!selectedAlert) return;
+    setStrLoading(true);
+    try {
+      const res = await generateSTR(selectedAlert.id);
+      setStrUrl(getSTRDownloadUrl(res.report_id));
+    } catch {
+      setStrUrl(null);
+    } finally {
+      setStrLoading(false);
+    }
+  }, [selectedAlert]);
 
-  const stats = [
-    {
-      label: "High Risk Alerts",
-      value: summary?.high_risk_count ?? 0,
-      icon: <ShieldAlert className="h-5 w-5" />,
-      color: "text-red-400",
-      bg: "bg-red-500/10",
-      border: "border-red-500/20",
-      change: "+12%",
-      changeUp: true,
-    },
-    {
-      label: "Transactions Monitored",
-      value: summary?.transactions_monitored ?? 0,
-      icon: <Activity className="h-5 w-5" />,
-      color: "text-cyan-400",
-      bg: "bg-cyan-500/10",
-      border: "border-cyan-500/20",
-      change: "+5%",
-      changeUp: true,
-    },
-    {
-      label: "Active Mule Rings",
-      value: summary?.active_mule_rings ?? 0,
-      icon: <Users className="h-5 w-5" />,
-      color: "text-amber-400",
-      bg: "bg-amber-500/10",
-      border: "border-amber-500/20",
-      change: "-1 today",
-      changeUp: false,
-    },
-  ];
+  const handleTwin = useCallback(async () => {
+    if (!selectedAlert) return;
+    setTwinLoading(true);
+    try {
+      const accountId =
+        selectedAlert.accounts_flagged?.[0] || selectedAlert.accountId;
+      const res = await runSimulation(accountId);
+      setTwinResult(res);
+    } catch {
+      setTwinResult(null);
+    } finally {
+      setTwinLoading(false);
+    }
+  }, [selectedAlert]);
 
-  if (loading) {
+  /* ── Risk trend data for chart ── */
+  const riskTrendData = useMemo(() => {
+    if (sim.riskTrend.length > 0) return sim.riskTrend;
+    return sim.eventHistory
+      .slice(0, 20)
+      .reverse()
+      .map((e, i) => ({
+        time: `T${i + 1}`,
+        risk: e.risk_scores.unified_score,
+        alerts: e.alert ? 1 : 0,
+      }));
+  }, [sim.riskTrend, sim.eventHistory]);
+
+  /* ── Loading state ── */
+  if (!currentEvent && sim.totalTicks === 0) {
     return (
-      <div className="space-y-8">
-        <div className="skeleton h-8 w-80" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <CardSkeleton />
-          <CardSkeleton />
-          <CardSkeleton />
+      <div className="p-6 space-y-6">
+        <div className="flex items-center gap-3 mb-4">
+          <Radio className="w-5 h-5 text-cyan-400 animate-pulse" />
+          <span className="text-cyan-300 font-medium">
+            Initializing live simulation…
+          </span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <CardSkeleton key={i} />
+          ))}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      {/* ── Header ──────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">
-            Unified Intelligence Dashboard
+    <div className="p-6 space-y-6 relative">
+      {/* ═══════ TOP BAR: Simulation Controls ═══════ */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Radio
+              className={`w-5 h-5 ${
+                sim.isRunning ? "text-emerald-400 animate-pulse" : "text-gray-500"
+              }`}
+            />
+            {sim.isRunning && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
+            )}
+          </div>
+          <h1 className="text-xl font-bold text-white">
+            Intelligence Dashboard
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Real-time fusion of Cyber and Financial signals
-          </p>
+          <span className="badge badge-high text-xs flex items-center gap-1">
+            <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+            LIVE
+          </span>
         </div>
-        <div className="flex gap-3">
+
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400">
+            Tick #{sim.totalTicks} ·{" "}
+            {currentEvent?.scenario_type === "money_laundering"
+              ? "🔴 ML Scenario"
+              : "🟢 Clean"}
+          </span>
           <button
-            onClick={() =>
-              runScenario()
-                .then(() => window.location.reload())
-                .catch(() => {})
-            }
-            className="btn-ghost text-xs flex items-center gap-2"
+            onClick={sim.toggle}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors text-sm"
           >
-            <Zap className="h-3.5 w-3.5" />
-            Run Demo
+            {sim.isRunning ? (
+              <>
+                <Pause className="w-4 h-4 text-amber-400" /> Pause
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4 text-emerald-400" /> Resume
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      {/* ── Stat Cards ──────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {stats.map((s) => (
-          <GlassCard key={s.label} className="p-5 flex flex-col" hover={false}>
-            <div className="flex items-center gap-3 mb-3">
-              <div
-                className={cn(
-                  "p-2.5 rounded-xl border",
-                  s.bg,
-                  s.border,
-                  s.color,
-                )}
-              >
-                {s.icon}
+      {/* ═══════ LIVE EVENT BANNER ═══════ */}
+      {currentEvent && (
+        <GlassCard
+          className={`border bg-gradient-to-r ${riskBg(unifiedScore)} p-4`}
+          hover={false}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            {/* Left: Event info */}
+            <div className="space-y-2 flex-1 min-w-[200px]">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-400" />
+                <span className="text-sm font-semibold text-white">
+                  Live Event — Tick #{currentEvent.tick}
+                </span>
+                <RiskBadge level={scoreToBadgeLevel(unifiedScore)} />
               </div>
-              <div>
-                <p className="text-xs font-medium text-slate-400">{s.label}</p>
-                <div className="text-2xl font-bold text-white">
-                  <AnimatedCounter target={s.value} />
+
+              {/* Change indicators */}
+              {changes.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {changes.map((c, i) => (
+                    <span
+                      key={i}
+                      className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-gray-300 flex items-center gap-1"
+                    >
+                      {c.includes("eo") || c.includes("location") ? (
+                        <MapPin className="w-3 h-3 text-cyan-400" />
+                      ) : c.includes("velocity") || c.includes("spike") ? (
+                        <TrendingUp className="w-3 h-3 text-red-400" />
+                      ) : (
+                        <Activity className="w-3 h-3 text-amber-400" />
+                      )}
+                      {c}
+                    </span>
+                  ))}
                 </div>
+              )}
+
+              {/* Risk scores row */}
+              <div className="flex flex-wrap gap-4 text-xs">
+                <span>
+                  Unified:{" "}
+                  <span className={`font-bold ${riskColor(unifiedScore)}`}>
+                    {(unifiedScore * 100).toFixed(0)}%
+                  </span>
+                </span>
+                <span>
+                  Cyber:{" "}
+                  <span className="text-cyan-300">
+                    {((riskScores?.cyber_score ?? 0) * 100).toFixed(0)}%
+                  </span>
+                </span>
+                <span>
+                  Financial:{" "}
+                  <span className="text-amber-300">
+                    {((riskScores?.financial_score ?? 0) * 100).toFixed(0)}%
+                  </span>
+                </span>
+                <span>
+                  Graph:{" "}
+                  <span className="text-purple-300">
+                    {((riskScores?.graph_score ?? 0) * 100).toFixed(0)}%
+                  </span>
+                </span>
               </div>
             </div>
-            <div
-              className={cn(
-                "mt-auto flex items-center text-xs font-medium",
-                s.changeUp ? "text-red-400" : "text-emerald-400",
+
+            {/* Right: Unified gauge */}
+            <div className="flex-shrink-0">
+              <RiskGauge score={unifiedScore} size={100} label="Unified" />
+            </div>
+          </div>
+
+          {/* ── Gemini Analysis (when risk > 0.7) ── */}
+          {geminiAnalysis && showGeminiPanel && (
+            <div className="mt-4 p-3 rounded-lg bg-black/30 border border-purple-500/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-purple-400" />
+                  <span className="text-sm font-semibold text-purple-300">
+                    Gemini AI Analysis
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    (confidence:{" "}
+                    {((geminiAnalysis.confidence ?? 0) * 100).toFixed(0)}%)
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowGeminiPanel(false)}
+                  className="text-gray-500 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-gray-300 leading-relaxed">
+                {geminiAnalysis.explanation}
+              </p>
+              {geminiAnalysis.recommendation && (
+                <p className="text-xs text-amber-300">
+                  <strong>Recommendation:</strong>{" "}
+                  {geminiAnalysis.recommendation}
+                </p>
               )}
+              {geminiAnalysis.key_indicators &&
+                geminiAnalysis.key_indicators.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {geminiAnalysis.key_indicators.map((ind, i) => (
+                      <span
+                        key={i}
+                        className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300"
+                      >
+                        {ind}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              {geminiAnalysis.immediate_steps &&
+                geminiAnalysis.immediate_steps.length > 0 && (
+                  <div className="mt-1">
+                    <span className="text-xs text-gray-400 font-medium">
+                      Immediate Steps:
+                    </span>
+                    <ul className="list-disc list-inside text-xs text-gray-300 mt-0.5">
+                      {geminiAnalysis.immediate_steps.map((step, i) => (
+                        <li key={i}>{step}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              {geminiAnalysis.str_required && (
+                <span className="inline-block text-xs px-2 py-0.5 bg-red-500/20 text-red-300 rounded mt-1">
+                  ⚠ STR Filing Required
+                </span>
+              )}
+            </div>
+          )}
+          {geminiAnalysis && !showGeminiPanel && (
+            <button
+              onClick={() => setShowGeminiPanel(true)}
+              className="mt-2 text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1"
             >
-              {s.changeUp ? (
-                <ArrowUpRight className="h-3.5 w-3.5 mr-1" />
-              ) : (
-                <ArrowDownRight className="h-3.5 w-3.5 mr-1" />
-              )}
-              {s.change}
+              <Brain className="w-3 h-3" /> Show AI Analysis
+            </button>
+          )}
+        </GlassCard>
+      )}
+
+      {/* ═══════ STAT CARDS ═══════ */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map((s) => (
+          <GlassCard key={s.label} glow={s.glow} hover={false}>
+            <div className="p-4 flex items-center gap-4">
+              <div className={`p-2.5 rounded-xl bg-white/5 ${s.color}`}>
+                <s.icon className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wider">
+                  {s.label}
+                </p>
+                <AnimatedCounter
+                  target={s.value}
+                  className={`text-2xl font-bold ${s.color}`}
+                />
+              </div>
             </div>
           </GlassCard>
         ))}
       </div>
 
-      {/* ── Main Grid ───────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Alert Feed + Trend */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Live Alert Feed */}
-          <GlassCard hover={false} className="overflow-hidden">
-            <div className="p-5 border-b border-white/[0.06] flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-red-500 pulse-dot" />
-                <h2 className="text-sm font-semibold text-white">
-                  Live Alert Feed
-                </h2>
-              </div>
-              <div className="flex gap-1.5">
-                {["", "new", "investigating", "escalated"].map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setFilterStatus(f)}
-                    className={cn(
-                      "px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors",
-                      filterStatus === f
-                        ? "bg-white/10 text-white"
-                        : "text-slate-500 hover:text-slate-300",
-                    )}
-                  >
-                    {f || "All"}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="divide-y divide-white/[0.04] max-h-[420px] overflow-y-auto">
-              {alerts.length === 0 && (
-                <div className="p-8 text-center text-sm text-slate-500">
-                  No alerts found.
-                </div>
-              )}
-              {alerts.map((alert) => (
-                <div
-                  key={alert.id}
-                  className={cn(
-                    "p-4 cursor-pointer transition-colors hover:bg-white/[0.03]",
-                    selectedAlert?.id === alert.id &&
-                      "bg-white/[0.05] border-l-2 border-l-amber-400",
-                  )}
-                  onClick={() => handleAlertClick(alert)}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className={cn(
-                          "h-2 w-2 rounded-full",
-                          alert.unifiedRiskScore > 0.8
-                            ? "bg-red-500"
-                            : alert.unifiedRiskScore > 0.4
-                              ? "bg-amber-500"
-                              : "bg-emerald-500",
-                        )}
-                      />
-                      <span className="text-sm font-medium text-white">
-                        {alert.accountId ||
-                          alert.accounts_flagged?.[0] ||
-                          alert.id}
-                      </span>
-                      <RiskBadge
-                        level={scoreToBadgeLevel(alert.unifiedRiskScore)}
-                      />
-                    </div>
-                    <div className="text-right">
-                      <div
-                        className={cn(
-                          "text-lg font-bold font-mono",
-                          alert.unifiedRiskScore > 0.8
-                            ? "text-red-400"
-                            : alert.unifiedRiskScore > 0.4
-                              ? "text-amber-400"
-                              : "text-emerald-400",
-                        )}
-                      >
-                        {(alert.unifiedRiskScore * 100).toFixed(0)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 text-xs text-slate-500">
-                    <span className="flex items-center gap-1">
-                      <ShieldAlert className="h-3 w-3" />
-                      {alert.cyberEvents.length} Cyber
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Activity className="h-3 w-3" />
-                      {alert.financialTransactions.length} Financial
-                    </span>
-                    <span>
-                      {new Date(alert.timestamp).toLocaleTimeString()}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </GlassCard>
-
-          {/* Risk Trend Chart */}
-          <GlassCard hover={false} className="p-5">
-            <h2 className="text-sm font-semibold text-white mb-5">
-              System Risk Trend
-            </h2>
-            <div className="h-56">
+      {/* ═══════ CHARTS ROW ═══════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Risk Trend */}
+        <GlassCard hover={false}>
+          <div className="p-4">
+            <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-cyan-400" />
+              Live Risk Trend
+            </h3>
+            <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trend}>
+                <AreaChart data={riskTrendData}>
                   <defs>
-                    <linearGradient id="riskGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#f59e0b" stopOpacity={0} />
+                    <linearGradient
+                      id="riskGrad"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="0%" stopColor="#ef4444" stopOpacity={0.4} />
+                      <stop
+                        offset="100%"
+                        stopColor="#ef4444"
+                        stopOpacity={0.05}
+                      />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    stroke="rgba(255,255,255,0.04)"
-                  />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
                   <XAxis
                     dataKey="time"
+                    tick={{ fill: "#9ca3af", fontSize: 10 }}
                     axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "#64748b", fontSize: 11 }}
-                    dy={8}
                   />
                   <YAxis
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fill: "#64748b", fontSize: 11 }}
-                    dx={-8}
                     domain={[0, 1]}
+                    tick={{ fill: "#9ca3af", fontSize: 10 }}
+                    axisLine={false}
                   />
                   <Tooltip
                     contentStyle={{
-                      background: "#111827",
-                      border: "1px solid rgba(255,255,255,0.1)",
-                      borderRadius: "8px",
-                      color: "#f1f5f9",
-                      fontSize: "12px",
+                      backgroundColor: "#1e1e2e",
+                      border: "1px solid #333",
+                      borderRadius: 8,
                     }}
+                    formatter={(v: number) => [
+                      `${(v * 100).toFixed(0)}%`,
+                      "Risk",
+                    ]}
                   />
                   <Area
                     type="monotone"
                     dataKey="risk"
-                    stroke="#f59e0b"
-                    strokeWidth={2}
+                    stroke="#ef4444"
                     fill="url(#riskGrad)"
-                    dot={false}
-                    activeDot={{
-                      r: 5,
-                      fill: "#f59e0b",
-                      stroke: "#0a0e1a",
-                      strokeWidth: 2,
-                    }}
+                    strokeWidth={2}
                   />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
-          </GlassCard>
-        </div>
+          </div>
+        </GlassCard>
 
-        {/* ── Detail Panel ────────────────────────────────── */}
-        <div className="lg:col-span-1">
-          {selectedAlert ? (
-            <GlassCard hover={false} className="overflow-hidden sticky top-24">
-              {/* Header */}
-              <div className="p-5 border-b border-white/[0.06]">
-                <div className="flex items-center justify-between mb-1">
-                  <h2 className="text-sm font-semibold text-white">
-                    Alert Detail
-                  </h2>
-                  <RiskBadge
-                    level={scoreToBadgeLevel(selectedAlert.unifiedRiskScore)}
+        {/* Risk Breakdown Bar */}
+        <GlassCard hover={false}>
+          <div className="p-4">
+            <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+              <Activity className="w-4 h-4 text-amber-400" />
+              Current Risk Breakdown
+            </h3>
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={[
+                    {
+                      name: "Cyber",
+                      score: riskScores?.cyber_score ?? 0,
+                      fill: "#06b6d4",
+                    },
+                    {
+                      name: "Financial",
+                      score: riskScores?.financial_score ?? 0,
+                      fill: "#f59e0b",
+                    },
+                    {
+                      name: "Graph",
+                      score: riskScores?.graph_score ?? 0,
+                      fill: "#a855f7",
+                    },
+                    {
+                      name: "Unified",
+                      score: riskScores?.unified_score ?? 0,
+                      fill:
+                        (riskScores?.unified_score ?? 0) >= 0.7
+                          ? "#ef4444"
+                          : "#10b981",
+                    },
+                  ]}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fill: "#9ca3af", fontSize: 10 }}
+                    axisLine={false}
                   />
-                </div>
-                <p className="text-xs text-slate-500 font-mono">
-                  {selectedAlert.id}
-                </p>
-              </div>
+                  <YAxis
+                    domain={[0, 1]}
+                    tick={{ fill: "#9ca3af", fontSize: 10 }}
+                    axisLine={false}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#1e1e2e",
+                      border: "1px solid #333",
+                      borderRadius: 8,
+                    }}
+                    formatter={(v: number) => [
+                      `${(v * 100).toFixed(0)}%`,
+                      "Score",
+                    ]}
+                  />
+                  <Bar dataKey="score" radius={[6, 6, 0, 0]}>
+                    {[0, 1, 2, 3].map((i) => (
+                      <Cell
+                        key={i}
+                        fill={
+                          ["#06b6d4", "#f59e0b", "#a855f7", "#ef4444"][i]
+                        }
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </GlassCard>
+      </div>
 
-              <div className="p-5 space-y-5 max-h-[calc(100vh-220px)] overflow-y-auto">
-                {/* AI Analysis */}
-                <div>
-                  <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5 text-amber-400" />
-                    Gemini AI Analysis
-                  </h3>
-                  {loadingExplanation ? (
-                    <LoadingSkeleton />
-                  ) : explanation ? (
-                    <div className="space-y-3">
-                      <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/10 text-xs text-slate-300 leading-relaxed">
-                        {explanation.explanation}
-                      </div>
-                      {explanation.recommendation && (
-                        <div className="p-3 rounded-xl bg-red-500/5 border border-red-500/10 text-xs">
-                          <span className="font-semibold text-red-400 block mb-1">
-                            Recommended:
-                          </span>
-                          <span className="text-slate-400">
-                            {explanation.recommendation}
-                          </span>
-                        </div>
-                      )}
-                      {explanation.key_indicators &&
-                        explanation.key_indicators.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5">
-                            {explanation.key_indicators.map((k, i) => (
-                              <span
-                                key={i}
-                                className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/[0.06]"
-                              >
-                                {k}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-600 italic">
-                      Select a high-risk alert for AI analysis.
-                    </p>
-                  )}
-                </div>
+      {/* ═══════ ALERTS TABLE ═══════ */}
+      <GlassCard hover={false}>
+        <div className="p-4">
+          <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-red-400" />
+            Live Alerts Feed
+            <span className="ml-auto text-xs text-gray-500">
+              {sim.liveAlerts.length} alerts
+            </span>
+          </h3>
 
-                {/* Cyber Signals */}
-                <div className="border-t border-white/[0.06] pt-4">
-                  <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">
-                    Cyber Signals ({selectedAlert.cyberEvents.length})
-                  </h3>
-                  {selectedAlert.cyberEvents.length > 0 ? (
-                    <ul className="space-y-2">
-                      {selectedAlert.cyberEvents.map((e) => (
-                        <li
-                          key={e.id}
-                          className="flex justify-between items-start p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]"
-                        >
-                          <div>
-                            <span className="text-xs font-medium text-white block">
-                              {(e.event_type || e.type || "").replace(
-                                /_/g,
-                                " ",
-                              )}
-                            </span>
-                            <span className="text-[10px] text-slate-500">
-                              {e.device_id || e.deviceId} •{" "}
-                              {e.ip_geo || e.ipLocation}
-                            </span>
-                          </div>
-                          <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-white/[0.05] text-slate-400">
-                            {((e.anomaly_score ?? e.riskScore) * 100).toFixed(
-                              0,
-                            )}
+          {sim.liveAlerts.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">
+              Waiting for suspicious activity…
+            </p>
+          ) : (
+            <div className="overflow-x-auto max-h-80 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-gray-900/80 backdrop-blur">
+                  <tr className="text-gray-400 uppercase tracking-wider">
+                    <th className="text-left py-2 px-3">Time</th>
+                    <th className="text-left py-2 px-3">Account</th>
+                    <th className="text-left py-2 px-3">Risk</th>
+                    <th className="text-left py-2 px-3">Status</th>
+                    <th className="text-left py-2 px-3">Source</th>
+                    <th className="text-right py-2 px-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {sim.liveAlerts.map((alert: any, idx: number) => {
+                    const score =
+                      alert.unifiedRiskScore ?? alert.unified_risk_score ?? 0;
+                    const isNew = idx === 0 && sim.isRunning;
+                    return (
+                      <tr
+                        key={alert.id || idx}
+                        className={`hover:bg-white/5 transition-colors ${
+                          isNew ? "animate-pulse bg-cyan-500/5" : ""
+                        }`}
+                      >
+                        <td className="py-2 px-3 text-gray-400 whitespace-nowrap">
+                          <Clock className="w-3 h-3 inline mr-1" />
+                          {formatTime(alert.timestamp || alert.created_at)}
+                        </td>
+                        <td className="py-2 px-3 text-white font-mono">
+                          {alert.accountId ||
+                            alert.accounts_flagged?.[0] ||
+                            "—"}
+                        </td>
+                        <td className="py-2 px-3">
+                          <span className={`font-bold ${riskColor(score)}`}>
+                            {(score * 100).toFixed(0)}%
                           </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-xs text-slate-600">None</p>
-                  )}
-                </div>
-
-                {/* Financial Signals */}
-                <div className="border-t border-white/[0.06] pt-4">
-                  <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3">
-                    Financial Signals (
-                    {selectedAlert.financialTransactions.length})
-                  </h3>
-                  {selectedAlert.financialTransactions.length > 0 ? (
-                    <ul className="space-y-2">
-                      {selectedAlert.financialTransactions.map((tx) => (
-                        <li
-                          key={tx.id}
-                          className="flex justify-between items-start p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]"
-                        >
-                          <div>
-                            <span className="text-xs font-medium text-white block">
-                              ₹{tx.amount.toLocaleString()}{" "}
-                              <span className="text-slate-500 font-normal">
-                                ({(tx.method || tx.type || "").toUpperCase()})
-                              </span>
+                        </td>
+                        <td className="py-2 px-3">
+                          <RiskBadge level={scoreToBadgeLevel(score)} />
+                        </td>
+                        <td className="py-2 px-3">
+                          {isNew && (
+                            <span className="badge badge-high text-[10px] mr-1">
+                              LIVE
                             </span>
-                            <span className="text-[10px] text-slate-500">
-                              {tx.sender || tx.senderId} →{" "}
-                              {tx.receiver || tx.receiverId}
-                            </span>
-                          </div>
-                          <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-white/[0.05] text-slate-400">
-                            {(
-                              (tx.velocity_score ?? tx.riskScore) * 100
-                            ).toFixed(0)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-xs text-slate-600">None</p>
-                  )}
-                </div>
-
-                {/* Digital Twin */}
-                <div className="border-t border-white/[0.06] pt-4">
-                  <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                    <Zap className="h-3.5 w-3.5 text-cyan-400" />
-                    Digital Twin Simulation
-                  </h3>
-                  {simulation ? (
-                    <div className="space-y-2">
-                      <div className="p-3 rounded-lg bg-red-500/5 border border-red-500/10">
-                        <div className="text-[10px] text-slate-500 mb-0.5">
-                          Without action
-                        </div>
-                        <div className="text-sm font-bold text-red-400 font-mono">
-                          ₹
-                          {simulation.no_action.total_exposure.toLocaleString()}
-                        </div>
-                        <div className="text-[10px] text-slate-500">
-                          {simulation.no_action.downstream_accounts} downstream
-                          accounts at risk
-                        </div>
-                      </div>
-                      <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/10">
-                        <div className="text-[10px] text-slate-500 mb-0.5">
-                          Optimal freeze
-                        </div>
-                        <div className="text-sm font-bold text-emerald-400 font-mono">
-                          ₹
-                          {simulation.optimal_action.prevented_loss.toLocaleString()}{" "}
-                          saved
-                        </div>
-                        <div className="text-[10px] text-slate-500">
-                          Freeze{" "}
-                          <span className="text-emerald-400 font-mono">
-                            {simulation.optimal_action.account_to_freeze}
-                          </span>{" "}
-                          —{" "}
-                          {simulation.optimal_action.prevented_percentage.toFixed(
-                            1,
                           )}
-                          % disruption
-                        </div>
-                      </div>
+                          {alert.gemini_analysis && (
+                            <span className="text-purple-400 text-[10px]">
+                              🧠 AI
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          <button
+                            onClick={() => openAlert(alert)}
+                            className="p-1 rounded hover:bg-white/10 text-cyan-400"
+                            title="View Detail"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </GlassCard>
+
+      {/* ═══════ ALERT DETAIL SLIDE-OVER ═══════ */}
+      {selectedAlert && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setSelectedAlert(null)}
+          />
+          <div className="relative w-full max-w-lg bg-gray-900/95 border-l border-white/10 overflow-y-auto p-6 space-y-5 animate-slide-in">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-red-400" />
+                Alert Detail
+              </h2>
+              <button
+                onClick={() => setSelectedAlert(null)}
+                className="p-1 rounded hover:bg-white/10"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+
+            {detailLoading ? (
+              <CardSkeleton />
+            ) : (
+              <>
+                {/* Summary */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <RiskGauge
+                      score={selectedAlert.unifiedRiskScore}
+                      size={80}
+                    />
+                    <div>
+                      <p className="text-sm text-gray-400">
+                        Account:{" "}
+                        <span className="text-white font-mono">
+                          {selectedAlert.accountId}
+                        </span>
+                      </p>
+                      <p className="text-sm text-gray-400">
+                        Status:{" "}
+                        <RiskBadge
+                          level={scoreToBadgeLevel(
+                            selectedAlert.unifiedRiskScore
+                          )}
+                        />
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {formatTime(selectedAlert.timestamp)}
+                      </p>
                     </div>
-                  ) : (
-                    <button
-                      onClick={handleSimulation}
-                      disabled={loadingSim}
-                      className="btn-ghost w-full text-xs flex items-center justify-center gap-2"
-                    >
-                      {loadingSim ? "Simulating..." : "Run Simulation"}
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </button>
-                  )}
+                  </div>
                 </div>
 
-                {/* Actions */}
-                <div className="pt-3 flex gap-2">
+                {/* Cyber Events */}
+                {selectedAlert.cyberEvents.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2">
+                      Cyber Events ({selectedAlert.cyberEvents.length})
+                    </h4>
+                    <div className="space-y-1">
+                      {selectedAlert.cyberEvents.map((e) => (
+                        <div
+                          key={e.id}
+                          className="text-xs p-2 rounded bg-white/5 flex justify-between"
+                        >
+                          <span className="text-gray-300">
+                            {e.type} — {e.ipLocation || e.ip_geo || "N/A"}
+                          </span>
+                          <span className={riskColor(e.riskScore)}>
+                            {(e.riskScore * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Transactions */}
+                {selectedAlert.financialTransactions.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2">
+                      Financial Transactions (
+                      {selectedAlert.financialTransactions.length})
+                    </h4>
+                    <div className="space-y-1">
+                      {selectedAlert.financialTransactions.map((t) => (
+                        <div
+                          key={t.id}
+                          className="text-xs p-2 rounded bg-white/5 flex justify-between"
+                        >
+                          <span className="text-gray-300">
+                            {t.senderId} → {t.receiverId}{" "}
+                            <span className="text-amber-300">
+                              ₹{t.amount.toLocaleString()}
+                            </span>
+                          </span>
+                          <span className={riskColor(t.riskScore)}>
+                            {(t.riskScore * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* AI Explanation from alert */}
+                {selectedAlert.geminiExplanation && (
+                  <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                    <p className="text-xs text-purple-300">
+                      <Brain className="w-3 h-3 inline mr-1" />
+                      {selectedAlert.geminiExplanation}
+                    </p>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleExplain}
+                    disabled={geminiLoading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 text-xs disabled:opacity-50"
+                  >
+                    <Brain className="w-3.5 h-3.5" />
+                    {geminiLoading ? "Analyzing…" : "AI Explain"}
+                  </button>
                   <button
                     onClick={handleSTR}
-                    disabled={loadingSTR}
-                    className="flex-1 btn-primary text-xs flex items-center justify-center gap-1.5"
+                    disabled={strLoading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 text-xs disabled:opacity-50"
                   >
-                    <FileText className="h-3.5 w-3.5" />
-                    {loadingSTR ? "Generating..." : "Generate STR"}
+                    <FileText className="w-3.5 h-3.5" />
+                    {strLoading ? "Generating…" : "Generate STR"}
                   </button>
-                  <button className="flex-1 btn-danger text-xs">
-                    Freeze Account
+                  <button
+                    onClick={handleTwin}
+                    disabled={twinLoading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 text-xs disabled:opacity-50"
+                  >
+                    <Network className="w-3.5 h-3.5" />
+                    {twinLoading ? "Simulating…" : "Digital Twin"}
                   </button>
                 </div>
+
+                {/* Gemini detail result */}
+                {geminiResult && (
+                  <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20 space-y-2">
+                    <h4 className="text-xs font-semibold text-purple-300 flex items-center gap-1">
+                      <Brain className="w-3 h-3" /> AI Explanation
+                    </h4>
+                    <p className="text-xs text-gray-300">
+                      {geminiResult.explanation}
+                    </p>
+                    <p className="text-xs text-amber-300">
+                      <strong>Recommendation:</strong>{" "}
+                      {geminiResult.recommendation}
+                    </p>
+                    {geminiResult.key_indicators.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {geminiResult.key_indicators.map((k, i) => (
+                          <span
+                            key={i}
+                            className="text-[10px] px-1.5 py-0.5 bg-purple-500/20 text-purple-300 rounded"
+                          >
+                            {k}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* STR download */}
                 {strUrl && (
                   <a
                     href={strUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 mt-2"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 text-xs w-fit"
                   >
-                    <Download className="h-3.5 w-3.5" />
+                    <Download className="w-3.5 h-3.5" />
                     Download STR Report
                   </a>
                 )}
-              </div>
-            </GlassCard>
-          ) : (
-            <GlassCard
-              hover={false}
-              className="p-8 text-center h-80 flex flex-col items-center justify-center"
-            >
-              <ShieldAlert className="h-10 w-10 text-slate-700 mb-4" />
-              <p className="text-sm text-slate-500">
-                Select an alert from the feed to view AI analysis, risk signals,
-                and run digital twin simulations.
-              </p>
-            </GlassCard>
-          )}
+
+                {/* Digital twin result */}
+                {twinResult && (
+                  <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 space-y-2">
+                    <h4 className="text-xs font-semibold text-amber-300">
+                      Digital Twin Simulation
+                    </h4>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <p className="text-gray-400">No Action Exposure</p>
+                        <p className="text-red-300 font-bold">
+                          ₹
+                          {twinResult.no_action.total_exposure.toLocaleString()}
+                        </p>
+                        <p className="text-gray-500">
+                          {twinResult.no_action.downstream_accounts} accounts
+                          affected
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400">Optimal Freeze</p>
+                        <p className="text-emerald-300 font-bold">
+                          ₹
+                          {twinResult.optimal_action.prevented_loss.toLocaleString()}{" "}
+                          saved
+                        </p>
+                        <p className="text-gray-500">
+                          Freeze:{" "}
+                          {twinResult.optimal_action.account_to_freeze}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ── Error display ── */}
+      {sim.error && (
+        <div className="fixed bottom-4 right-4 p-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 text-xs max-w-xs z-40">
+          <strong>Simulation Error:</strong> {sim.error}
+        </div>
+      )}
     </div>
   );
 }
