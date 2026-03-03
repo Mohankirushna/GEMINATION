@@ -1,297 +1,207 @@
 {
   "2": {
     "tick": 2,
-    "timestamp": "2026-03-02T22:59:22.782584",
-    "scenario_type": "clean",
-    "is_suspicious": false,
-    "unified_score": 0.029,
-    "cyber_score": 0.03,
-    "financial_score": 0.02,
-    "graph_score": 0.04,
-    "changes": [],
-    "cyber_event": {
-      "id": "ce_107714ed",
-      "account_id": "acc_clean_2",
-      "device_id": "dev_clean_7",
-      "event_type": "login",
-      "ip_geo": "Mumbai, IN",
-      "timestamp": "2026-03-02T22:59:22.782504",
-      "anomaly_score": 0.03,
-      "raw_signals": {
-        "scenario": "normal_activity"
-      }
-    },
-    "transaction": {
-      "id": "tx_2e1f96e5",
-      "sender": "acc_clean_2",
-      "receiver": "merchant_grocery",
-      "amount": 1200.0,
-      "currency": "INR",
-      "method": "upi",
-      "timestamp": "2026-03-02T22:59:22.782535",
-      "velocity_score": 0.02,
-      "risk_flags": []
-    },
-    "alert": null,
-    "gemini_analysis": null,
-    "accounts_involved": [
-      "acc_clean_2",
-      "merchant_grocery"
-    ]
-  },
-  "3": {
-    "tick": 3,
-    "timestamp": "2026-03-02T22:59:41.353692",
+    "timestamp": "2026-03-02T23:52:54.150210",
     "scenario_type": "money_laundering",
     "is_suspicious": true,
-    "unified_score": 0.7185,
-    "cyber_score": 0.62,
-    "financial_score": 0.78,
+    "unified_score": 0.899,
+    "cyber_score": 0.94,
+    "financial_score": 0.93,
     "graph_score": 0.79,
     "changes": [
-      "Transaction velocity anomaly: score 0.78",
-      "Phishing attempt detected targeting acc_victim_1",
-      "Fund splitting detected: \u20b915,000.0 from acc_C \u2192 acc_E"
-    ],
-    "cyber_event": {
-      "id": "ce_dfa54715",
-      "account_id": "acc_victim_1",
-      "device_id": "dev_victim_1",
-      "event_type": "phishing",
-      "ip_geo": "Ahmedabad, IN",
-      "timestamp": "2026-03-02T22:59:41.353366",
-      "anomaly_score": 0.62,
-      "raw_signals": {
-        "phishing_link": "https://fake-bank-37.xyz/verify",
-        "scenario": "phishing"
-      }
-    },
-    "transaction": {
-      "id": "tx_b5a2a13b",
-      "sender": "acc_C",
-      "receiver": "acc_E",
-      "amount": 15000.0,
-      "currency": "INR",
-      "method": "upi",
-      "timestamp": "2026-03-02T22:59:41.353491",
-      "velocity_score": 0.78,
-      "risk_flags": [
-        "rapid_transfer",
-        "splitting",
-        "layering"
-      ]
-    },
-    "alert": {
-      "id": "alert_e48e4e5e",
-      "accounts_flagged": [
-        "acc_victim_1",
-        "acc_C",
-        "acc_E"
-      ],
-      "severity": "high",
-      "status": "new",
-      "unified_risk_score": 0.7185,
-      "cyber_events": [
-        {
-          "id": "ce_dfa54715",
-          "account_id": "acc_victim_1",
-          "device_id": "dev_victim_1",
-          "event_type": "phishing",
-          "ip_geo": "Ahmedabad, IN",
-          "timestamp": "2026-03-02T22:59:41.353366",
-          "anomaly_score": 0.62,
-          "raw_signals": {
-            "phishing_link": "https://fake-bank-37.xyz/verify",
-            "scenario": "phishing"
-          }
-        }
-      ],
-      "financial_transactions": [
-        {
-          "id": "tx_b5a2a13b",
-          "sender": "acc_C",
-          "receiver": "acc_E",
-          "amount": 15000.0,
-          "currency": "INR",
-          "method": "upi",
-          "timestamp": "2026-03-02T22:59:41.353491",
-          "velocity_score": 0.78,
-          "risk_flags": [
-            "rapid_transfer",
-            "splitting",
-            "layering"
-          ]
-        }
-      ],
-      "created_at": "2026-03-02T22:59:41.353639",
-      "gemini_explanation": "",
-      "recommended_action": ""
-    },
-    "gemini_analysis": null,
-    "accounts_involved": [
-      "acc_victim_1",
-      "acc_E",
-      "acc_C"
-    ]
-  },
-  "4": {
-    "tick": 4,
-    "timestamp": "2026-03-02T22:59:52.429624",
-    "scenario_type": "money_laundering",
-    "is_suspicious": true,
-    "unified_score": 0.7405,
-    "cyber_score": 0.72,
-    "financial_score": 0.75,
-    "graph_score": 0.76,
-    "changes": [
-      "Login velocity spike: 10 attempts in 5 min",
-      "Transaction velocity anomaly: score 0.75"
-    ],
-    "cyber_event": {
-      "id": "ce_700c7efd",
-      "account_id": "acc_F",
-      "device_id": "dev_8891",
-      "event_type": "login",
-      "ip_geo": "Ahmedabad, IN",
-      "timestamp": "2026-03-02T22:59:52.429015",
-      "anomaly_score": 0.72,
-      "raw_signals": {
-        "login_velocity": 10,
-        "failed_attempts": 2,
-        "scenario": "rapid_login"
-      }
-    },
-    "transaction": {
-      "id": "tx_4b3fe502",
-      "sender": "acc_victim_3",
-      "receiver": "acc_F",
-      "amount": 25000.0,
-      "currency": "INR",
-      "method": "upi",
-      "timestamp": "2026-03-02T22:59:52.429210",
-      "velocity_score": 0.75,
-      "risk_flags": [
-        "unusual_amount",
-        "new_beneficiary"
-      ]
-    },
-    "alert": {
-      "id": "alert_89d14871",
-      "accounts_flagged": [
-        "acc_F",
-        "acc_victim_3",
-        "acc_F"
-      ],
-      "severity": "high",
-      "status": "new",
-      "unified_risk_score": 0.7405,
-      "cyber_events": [
-        {
-          "id": "ce_700c7efd",
-          "account_id": "acc_F",
-          "device_id": "dev_8891",
-          "event_type": "login",
-          "ip_geo": "Ahmedabad, IN",
-          "timestamp": "2026-03-02T22:59:52.429015",
-          "anomaly_score": 0.72,
-          "raw_signals": {
-            "login_velocity": 10,
-            "failed_attempts": 2,
-            "scenario": "rapid_login"
-          }
-        }
-      ],
-      "financial_transactions": [
-        {
-          "id": "tx_4b3fe502",
-          "sender": "acc_victim_3",
-          "receiver": "acc_F",
-          "amount": 25000.0,
-          "currency": "INR",
-          "method": "upi",
-          "timestamp": "2026-03-02T22:59:52.429210",
-          "velocity_score": 0.75,
-          "risk_flags": [
-            "unusual_amount",
-            "new_beneficiary"
-          ]
-        }
-      ],
-      "created_at": "2026-03-02T22:59:52.429504",
-      "gemini_explanation": "",
-      "recommended_action": ""
-    },
-    "gemini_analysis": null,
-    "accounts_involved": [
-      "acc_victim_3",
-      "acc_F"
-    ]
-  },
-  "6": {
-    "tick": 6,
-    "timestamp": "2026-03-02T23:00:36.037603",
-    "scenario_type": "money_laundering",
-    "is_suspicious": true,
-    "unified_score": 0.84,
-    "cyber_score": 0.85,
-    "financial_score": 0.9,
-    "graph_score": 0.74,
-    "changes": [
-      "Geo-location change: Pune, IN \u2192 Jaipur, IN",
-      "Transaction velocity anomaly: score 0.90",
+      "Geo-location change: Mumbai, IN \u2192 Bhopal, IN",
+      "Transaction velocity anomaly: score 0.93",
       "Fund consolidation: \u20b920,000.0 flowing to acc_kingpin"
     ],
     "cyber_event": {
-      "id": "ce_06e70a1c",
-      "account_id": "acc_E",
-      "device_id": "dev_7712",
+      "id": "ce_3805101e",
+      "account_id": "acc_B",
+      "device_id": "dev_3345",
       "event_type": "impossible_travel",
-      "ip_geo": "Jaipur, IN",
-      "timestamp": "2026-03-02T23:00:36.030961",
-      "anomaly_score": 0.85,
+      "ip_geo": "Bhopal, IN",
+      "timestamp": "2026-03-02T23:52:54.150099",
+      "anomaly_score": 0.94,
       "raw_signals": {
-        "origin": "Pune, IN",
-        "destination": "Jaipur, IN",
-        "time_diff_min": 5,
+        "origin": "Mumbai, IN",
+        "destination": "Bhopal, IN",
+        "time_diff_min": 1,
         "scenario": "impossible_travel"
       }
     },
     "transaction": {
-      "id": "tx_132b7e1f",
-      "sender": "acc_C",
+      "id": "tx_422e16e8",
+      "sender": "acc_F",
       "receiver": "acc_kingpin",
       "amount": 20000.0,
       "currency": "INR",
       "method": "neft",
-      "timestamp": "2026-03-02T23:00:36.034194",
-      "velocity_score": 0.9,
+      "timestamp": "2026-03-02T23:52:54.150126",
+      "velocity_score": 0.93,
       "risk_flags": [
         "consolidation",
         "rapid_withdrawal"
       ]
     },
     "alert": {
-      "id": "alert_e9169baa",
+      "id": "alert_f9f30aff",
       "accounts_flagged": [
-        "acc_E",
-        "acc_C",
+        "acc_B",
+        "acc_F",
         "acc_kingpin"
       ],
-      "severity": "high",
+      "severity": "critical",
       "status": "new",
-      "unified_risk_score": 0.84,
+      "unified_risk_score": 0.899,
       "cyber_events": [
         {
-          "id": "ce_06e70a1c",
-          "account_id": "acc_E",
+          "id": "ce_3805101e",
+          "account_id": "acc_B",
+          "device_id": "dev_3345",
+          "event_type": "impossible_travel",
+          "ip_geo": "Bhopal, IN",
+          "timestamp": "2026-03-02T23:52:54.150099",
+          "anomaly_score": 0.94,
+          "raw_signals": {
+            "origin": "Mumbai, IN",
+            "destination": "Bhopal, IN",
+            "time_diff_min": 1,
+            "scenario": "impossible_travel"
+          }
+        }
+      ],
+      "financial_transactions": [
+        {
+          "id": "tx_422e16e8",
+          "sender": "acc_F",
+          "receiver": "acc_kingpin",
+          "amount": 20000.0,
+          "currency": "INR",
+          "method": "neft",
+          "timestamp": "2026-03-02T23:52:54.150126",
+          "velocity_score": 0.93,
+          "risk_flags": [
+            "consolidation",
+            "rapid_withdrawal"
+          ]
+        }
+      ],
+      "created_at": "2026-03-02T23:52:54.150180",
+      "gemini_explanation": "",
+      "recommended_action": ""
+    },
+    "gemini_analysis": null,
+    "accounts_involved": [
+      "acc_F",
+      "acc_B",
+      "acc_kingpin"
+    ]
+  },
+  "3": {
+    "tick": 3,
+    "timestamp": "2026-03-02T23:53:09.160533",
+    "scenario_type": "clean",
+    "is_suspicious": false,
+    "unified_score": 0.081,
+    "cyber_score": 0.12,
+    "financial_score": 0.08,
+    "graph_score": 0.02,
+    "changes": [],
+    "cyber_event": {
+      "id": "ce_83605ab5",
+      "account_id": "acc_clean_3",
+      "device_id": "dev_clean_10",
+      "event_type": "login",
+      "ip_geo": "Mumbai, IN",
+      "timestamp": "2026-03-02T23:53:09.148660",
+      "anomaly_score": 0.12,
+      "raw_signals": {
+        "scenario": "normal_activity"
+      }
+    },
+    "transaction": {
+      "id": "tx_de6fa76c",
+      "sender": "acc_clean_1",
+      "receiver": "merchant_recharge",
+      "amount": 250.0,
+      "currency": "INR",
+      "method": "upi",
+      "timestamp": "2026-03-02T23:53:09.152610",
+      "velocity_score": 0.08,
+      "risk_flags": []
+    },
+    "alert": null,
+    "gemini_analysis": null,
+    "accounts_involved": [
+      "acc_clean_1",
+      "merchant_recharge",
+      "acc_clean_3"
+    ]
+  },
+  "4": {
+    "tick": 4,
+    "timestamp": "2026-03-02T23:53:24.121872",
+    "scenario_type": "money_laundering",
+    "is_suspicious": true,
+    "unified_score": 0.8665,
+    "cyber_score": 0.93,
+    "financial_score": 0.97,
+    "graph_score": 0.62,
+    "changes": [
+      "Geo-location change: Chennai, IN \u2192 Kochi, IN",
+      "Transaction velocity anomaly: score 0.97",
+      "Fund consolidation: \u20b930,000.0 flowing to acc_kingpin"
+    ],
+    "cyber_event": {
+      "id": "ce_9fea327b",
+      "account_id": "acc_F",
+      "device_id": "dev_7712",
+      "event_type": "impossible_travel",
+      "ip_geo": "Kochi, IN",
+      "timestamp": "2026-03-02T23:53:24.119466",
+      "anomaly_score": 0.93,
+      "raw_signals": {
+        "origin": "Chennai, IN",
+        "destination": "Kochi, IN",
+        "time_diff_min": 5,
+        "scenario": "impossible_travel"
+      }
+    },
+    "transaction": {
+      "id": "tx_ca35b404",
+      "sender": "acc_E",
+      "receiver": "acc_kingpin",
+      "amount": 30000.0,
+      "currency": "INR",
+      "method": "neft",
+      "timestamp": "2026-03-02T23:53:24.119821",
+      "velocity_score": 0.97,
+      "risk_flags": [
+        "consolidation",
+        "rapid_withdrawal"
+      ]
+    },
+    "alert": {
+      "id": "alert_ca9a5ac1",
+      "accounts_flagged": [
+        "acc_F",
+        "acc_E",
+        "acc_kingpin"
+      ],
+      "severity": "critical",
+      "status": "new",
+      "unified_risk_score": 0.8665,
+      "cyber_events": [
+        {
+          "id": "ce_9fea327b",
+          "account_id": "acc_F",
           "device_id": "dev_7712",
           "event_type": "impossible_travel",
-          "ip_geo": "Jaipur, IN",
-          "timestamp": "2026-03-02T23:00:36.030961",
-          "anomaly_score": 0.85,
+          "ip_geo": "Kochi, IN",
+          "timestamp": "2026-03-02T23:53:24.119466",
+          "anomaly_score": 0.93,
           "raw_signals": {
-            "origin": "Pune, IN",
-            "destination": "Jaipur, IN",
+            "origin": "Chennai, IN",
+            "destination": "Kochi, IN",
             "time_diff_min": 5,
             "scenario": "impossible_travel"
           }
@@ -299,68 +209,68 @@
       ],
       "financial_transactions": [
         {
-          "id": "tx_132b7e1f",
-          "sender": "acc_C",
+          "id": "tx_ca35b404",
+          "sender": "acc_E",
           "receiver": "acc_kingpin",
-          "amount": 20000.0,
+          "amount": 30000.0,
           "currency": "INR",
           "method": "neft",
-          "timestamp": "2026-03-02T23:00:36.034194",
-          "velocity_score": 0.9,
+          "timestamp": "2026-03-02T23:53:24.119821",
+          "velocity_score": 0.97,
           "risk_flags": [
             "consolidation",
             "rapid_withdrawal"
           ]
         }
       ],
-      "created_at": "2026-03-02T23:00:36.037513",
+      "created_at": "2026-03-02T23:53:24.121672",
       "gemini_explanation": "",
       "recommended_action": ""
     },
     "gemini_analysis": null,
     "accounts_involved": [
       "acc_E",
-      "acc_kingpin",
-      "acc_C"
+      "acc_F",
+      "acc_kingpin"
     ]
   },
-  "7": {
-    "tick": 7,
-    "timestamp": "2026-03-02T23:00:37.420953",
+  "6": {
+    "tick": 6,
+    "timestamp": "2026-03-02T23:53:54.099875",
     "scenario_type": "money_laundering",
     "is_suspicious": true,
-    "unified_score": 0.773,
-    "cyber_score": 0.77,
-    "financial_score": 0.8,
-    "graph_score": 0.74,
+    "unified_score": 0.8375,
+    "cyber_score": 0.92,
+    "financial_score": 0.87,
+    "graph_score": 0.66,
     "changes": [
-      "Transaction velocity anomaly: score 0.80",
-      "New device detected: dev_8891 at Kochi, IN",
-      "Fund splitting detected: \u20b935,000.0 from acc_B \u2192 acc_E"
+      "Transaction velocity anomaly: score 0.87",
+      "New device detected: dev_3345 at Bengaluru, IN",
+      "Fund splitting detected: \u20b925,000.0 from acc_A \u2192 acc_F"
     ],
     "cyber_event": {
-      "id": "ce_4482650c",
-      "account_id": "acc_E",
-      "device_id": "dev_8891",
+      "id": "ce_fb31df5b",
+      "account_id": "acc_A",
+      "device_id": "dev_3345",
       "event_type": "new_device",
-      "ip_geo": "Kochi, IN",
-      "timestamp": "2026-03-02T23:00:37.419737",
-      "anomaly_score": 0.77,
+      "ip_geo": "Bengaluru, IN",
+      "timestamp": "2026-03-02T23:53:54.099661",
+      "anomaly_score": 0.92,
       "raw_signals": {
         "rapid_switch": true,
-        "accounts_in_session": 5,
+        "accounts_in_session": 4,
         "scenario": "device_reuse"
       }
     },
     "transaction": {
-      "id": "tx_6849e9af",
-      "sender": "acc_B",
-      "receiver": "acc_E",
-      "amount": 35000.0,
+      "id": "tx_d1a4e4d1",
+      "sender": "acc_A",
+      "receiver": "acc_F",
+      "amount": 25000.0,
       "currency": "INR",
       "method": "imps",
-      "timestamp": "2026-03-02T23:00:37.419851",
-      "velocity_score": 0.8,
+      "timestamp": "2026-03-02T23:53:54.099711",
+      "velocity_score": 0.87,
       "risk_flags": [
         "rapid_transfer",
         "splitting",
@@ -368,41 +278,41 @@
       ]
     },
     "alert": {
-      "id": "alert_aed4d137",
+      "id": "alert_6ca0a6d2",
       "accounts_flagged": [
-        "acc_E",
-        "acc_B",
-        "acc_E"
+        "acc_A",
+        "acc_A",
+        "acc_F"
       ],
       "severity": "high",
       "status": "new",
-      "unified_risk_score": 0.773,
+      "unified_risk_score": 0.8375,
       "cyber_events": [
         {
-          "id": "ce_4482650c",
-          "account_id": "acc_E",
-          "device_id": "dev_8891",
+          "id": "ce_fb31df5b",
+          "account_id": "acc_A",
+          "device_id": "dev_3345",
           "event_type": "new_device",
-          "ip_geo": "Kochi, IN",
-          "timestamp": "2026-03-02T23:00:37.419737",
-          "anomaly_score": 0.77,
+          "ip_geo": "Bengaluru, IN",
+          "timestamp": "2026-03-02T23:53:54.099661",
+          "anomaly_score": 0.92,
           "raw_signals": {
             "rapid_switch": true,
-            "accounts_in_session": 5,
+            "accounts_in_session": 4,
             "scenario": "device_reuse"
           }
         }
       ],
       "financial_transactions": [
         {
-          "id": "tx_6849e9af",
-          "sender": "acc_B",
-          "receiver": "acc_E",
-          "amount": 35000.0,
+          "id": "tx_d1a4e4d1",
+          "sender": "acc_A",
+          "receiver": "acc_F",
+          "amount": 25000.0,
           "currency": "INR",
           "method": "imps",
-          "timestamp": "2026-03-02T23:00:37.419851",
-          "velocity_score": 0.8,
+          "timestamp": "2026-03-02T23:53:54.099711",
+          "velocity_score": 0.87,
           "risk_flags": [
             "rapid_transfer",
             "splitting",
@@ -410,373 +320,47 @@
           ]
         }
       ],
-      "created_at": "2026-03-02T23:00:37.420851",
+      "created_at": "2026-03-02T23:53:54.099789",
       "gemini_explanation": "",
       "recommended_action": ""
     },
     "gemini_analysis": null,
     "accounts_involved": [
-      "acc_E",
-      "acc_B"
-    ]
-  },
-  "8": {
-    "tick": 8,
-    "timestamp": "2026-03-02T23:00:52.430580",
-    "scenario_type": "money_laundering",
-    "is_suspicious": true,
-    "unified_score": 0.844,
-    "cyber_score": 0.93,
-    "financial_score": 0.82,
-    "graph_score": 0.74,
-    "changes": [
-      "Geo-location change: Kochi, IN \u2192 Hyderabad, IN",
-      "Transaction velocity anomaly: score 0.82",
-      "Fund consolidation: \u20b930,000.0 flowing to acc_kingpin"
-    ],
-    "cyber_event": {
-      "id": "ce_7ac9037f",
-      "account_id": "acc_E",
-      "device_id": "dev_3345",
-      "event_type": "impossible_travel",
-      "ip_geo": "Hyderabad, IN",
-      "timestamp": "2026-03-02T23:00:52.428452",
-      "anomaly_score": 0.93,
-      "raw_signals": {
-        "origin": "Kochi, IN",
-        "destination": "Hyderabad, IN",
-        "time_diff_min": 4,
-        "scenario": "impossible_travel"
-      }
-    },
-    "transaction": {
-      "id": "tx_9682054b",
-      "sender": "acc_A",
-      "receiver": "acc_kingpin",
-      "amount": 30000.0,
-      "currency": "INR",
-      "method": "neft",
-      "timestamp": "2026-03-02T23:00:52.429326",
-      "velocity_score": 0.82,
-      "risk_flags": [
-        "consolidation",
-        "rapid_withdrawal"
-      ]
-    },
-    "alert": {
-      "id": "alert_006d5807",
-      "accounts_flagged": [
-        "acc_E",
-        "acc_A",
-        "acc_kingpin"
-      ],
-      "severity": "high",
-      "status": "new",
-      "unified_risk_score": 0.844,
-      "cyber_events": [
-        {
-          "id": "ce_7ac9037f",
-          "account_id": "acc_E",
-          "device_id": "dev_3345",
-          "event_type": "impossible_travel",
-          "ip_geo": "Hyderabad, IN",
-          "timestamp": "2026-03-02T23:00:52.428452",
-          "anomaly_score": 0.93,
-          "raw_signals": {
-            "origin": "Kochi, IN",
-            "destination": "Hyderabad, IN",
-            "time_diff_min": 4,
-            "scenario": "impossible_travel"
-          }
-        }
-      ],
-      "financial_transactions": [
-        {
-          "id": "tx_9682054b",
-          "sender": "acc_A",
-          "receiver": "acc_kingpin",
-          "amount": 30000.0,
-          "currency": "INR",
-          "method": "neft",
-          "timestamp": "2026-03-02T23:00:52.429326",
-          "velocity_score": 0.82,
-          "risk_flags": [
-            "consolidation",
-            "rapid_withdrawal"
-          ]
-        }
-      ],
-      "created_at": "2026-03-02T23:00:52.430391",
-      "gemini_explanation": "",
-      "recommended_action": ""
-    },
-    "gemini_analysis": null,
-    "accounts_involved": [
-      "acc_E",
       "acc_A",
-      "acc_kingpin"
+      "acc_F"
     ]
   },
-  "10": {
-    "tick": 10,
-    "timestamp": "2026-03-02T23:02:09.880938",
-    "scenario_type": "money_laundering",
-    "is_suspicious": true,
-    "unified_score": 0.7965,
-    "cyber_score": 0.87,
-    "financial_score": 0.71,
-    "graph_score": 0.8,
-    "changes": [
-      "Geo-location change: Chandigarh, IN \u2192 Pune, IN",
-      "Transaction velocity anomaly: score 0.71"
-    ],
-    "cyber_event": {
-      "id": "ce_20f81424",
-      "account_id": "acc_C",
-      "device_id": "dev_7712",
-      "event_type": "impossible_travel",
-      "ip_geo": "Pune, IN",
-      "timestamp": "2026-03-02T23:02:09.868625",
-      "anomaly_score": 0.87,
-      "raw_signals": {
-        "origin": "Chandigarh, IN",
-        "destination": "Pune, IN",
-        "time_diff_min": 4,
-        "scenario": "impossible_travel"
-      }
-    },
-    "transaction": {
-      "id": "tx_a794eb5d",
-      "sender": "acc_victim_2",
-      "receiver": "acc_F",
-      "amount": 35000.0,
-      "currency": "INR",
-      "method": "upi",
-      "timestamp": "2026-03-02T23:02:09.871180",
-      "velocity_score": 0.71,
-      "risk_flags": [
-        "unusual_amount",
-        "new_beneficiary"
-      ]
-    },
-    "alert": {
-      "id": "alert_2841a0de",
-      "accounts_flagged": [
-        "acc_C",
-        "acc_victim_2",
-        "acc_F"
-      ],
-      "severity": "high",
-      "status": "new",
-      "unified_risk_score": 0.7965,
-      "cyber_events": [
-        {
-          "id": "ce_20f81424",
-          "account_id": "acc_C",
-          "device_id": "dev_7712",
-          "event_type": "impossible_travel",
-          "ip_geo": "Pune, IN",
-          "timestamp": "2026-03-02T23:02:09.868625",
-          "anomaly_score": 0.87,
-          "raw_signals": {
-            "origin": "Chandigarh, IN",
-            "destination": "Pune, IN",
-            "time_diff_min": 4,
-            "scenario": "impossible_travel"
-          }
-        }
-      ],
-      "financial_transactions": [
-        {
-          "id": "tx_a794eb5d",
-          "sender": "acc_victim_2",
-          "receiver": "acc_F",
-          "amount": 35000.0,
-          "currency": "INR",
-          "method": "upi",
-          "timestamp": "2026-03-02T23:02:09.871180",
-          "velocity_score": 0.71,
-          "risk_flags": [
-            "unusual_amount",
-            "new_beneficiary"
-          ]
-        }
-      ],
-      "created_at": "2026-03-02T23:02:09.880274",
-      "gemini_explanation": "",
-      "recommended_action": ""
-    },
-    "gemini_analysis": null,
-    "accounts_involved": [
-      "acc_victim_2",
-      "acc_F",
-      "acc_C"
-    ]
-  },
-  "1": {
-    "tick": 1,
-    "timestamp": "2026-03-02T22:59:22.745688",
-    "scenario_type": "money_laundering",
-    "is_suspicious": true,
-    "unified_score": 0.7765,
-    "cyber_score": 0.81,
-    "financial_score": 0.8,
-    "graph_score": 0.69,
-    "changes": [
-      "Transaction velocity anomaly: score 0.80",
-      "Phishing attempt detected targeting acc_victim_1"
-    ],
-    "cyber_event": {
-      "id": "ce_d2fac1af",
-      "account_id": "acc_victim_1",
-      "device_id": "dev_victim_3",
-      "event_type": "phishing",
-      "ip_geo": "Jaipur, IN",
-      "timestamp": "2026-03-02T22:59:22.742852",
-      "anomaly_score": 0.81,
-      "raw_signals": {
-        "phishing_link": "https://fake-bank-28.xyz/verify",
-        "scenario": "phishing"
-      }
-    },
-    "transaction": {
-      "id": "tx_ca152a39",
-      "sender": "acc_victim_3",
-      "receiver": "acc_B",
-      "amount": 75000.0,
-      "currency": "INR",
-      "method": "upi",
-      "timestamp": "2026-03-02T22:59:22.743141",
-      "velocity_score": 0.8,
-      "risk_flags": [
-        "unusual_amount",
-        "new_beneficiary"
-      ]
-    },
-    "alert": {
-      "id": "alert_e0b89b64",
-      "accounts_flagged": [
-        "acc_victim_1",
-        "acc_victim_3",
-        "acc_B"
-      ],
-      "severity": "high",
-      "status": "new",
-      "unified_risk_score": 0.7765,
-      "cyber_events": [
-        {
-          "id": "ce_d2fac1af",
-          "account_id": "acc_victim_1",
-          "device_id": "dev_victim_3",
-          "event_type": "phishing",
-          "ip_geo": "Jaipur, IN",
-          "timestamp": "2026-03-02T22:59:22.742852",
-          "anomaly_score": 0.81,
-          "raw_signals": {
-            "phishing_link": "https://fake-bank-28.xyz/verify",
-            "scenario": "phishing"
-          }
-        }
-      ],
-      "financial_transactions": [
-        {
-          "id": "tx_ca152a39",
-          "sender": "acc_victim_3",
-          "receiver": "acc_B",
-          "amount": 75000.0,
-          "currency": "INR",
-          "method": "upi",
-          "timestamp": "2026-03-02T22:59:22.743141",
-          "velocity_score": 0.8,
-          "risk_flags": [
-            "unusual_amount",
-            "new_beneficiary"
-          ]
-        }
-      ],
-      "created_at": "2026-03-02T22:59:22.743998",
-      "gemini_explanation": "",
-      "recommended_action": ""
-    },
-    "gemini_analysis": null,
-    "accounts_involved": [
-      "acc_victim_1",
-      "acc_B",
-      "acc_victim_3"
-    ]
-  },
-  "5": {
-    "tick": 5,
-    "timestamp": "2026-03-02T23:00:07.480359",
+  "7": {
+    "tick": 7,
+    "timestamp": "2026-03-02T23:54:09.122309",
     "scenario_type": "clean",
     "is_suspicious": false,
-    "unified_score": 0.065,
-    "cyber_score": 0.13,
-    "financial_score": 0.03,
-    "graph_score": 0.01,
+    "unified_score": 0.0865,
+    "cyber_score": 0.09,
+    "financial_score": 0.08,
+    "graph_score": 0.09,
     "changes": [],
     "cyber_event": {
-      "id": "ce_56e40b47",
+      "id": "ce_73323af7",
       "account_id": "acc_clean_2",
       "device_id": "dev_clean_5",
       "event_type": "login",
-      "ip_geo": "Bengaluru, IN",
-      "timestamp": "2026-03-02T23:00:07.469084",
-      "anomaly_score": 0.13,
+      "ip_geo": "Mumbai, IN",
+      "timestamp": "2026-03-02T23:54:09.121483",
+      "anomaly_score": 0.09,
       "raw_signals": {
         "scenario": "normal_activity"
       }
     },
     "transaction": {
-      "id": "tx_705c401a",
+      "id": "tx_60d943b5",
       "sender": "acc_clean_1",
-      "receiver": "merchant_online",
+      "receiver": "merchant_recharge",
       "amount": 5000.0,
       "currency": "INR",
       "method": "upi",
-      "timestamp": "2026-03-02T23:00:07.473921",
-      "velocity_score": 0.03,
-      "risk_flags": []
-    },
-    "alert": null,
-    "gemini_analysis": null,
-    "accounts_involved": [
-      "acc_clean_1",
-      "merchant_online",
-      "acc_clean_2"
-    ]
-  },
-  "9": {
-    "tick": 9,
-    "timestamp": "2026-03-02T23:01:07.440483",
-    "scenario_type": "clean",
-    "is_suspicious": false,
-    "unified_score": 0.0925,
-    "cyber_score": 0.15,
-    "financial_score": 0.05,
-    "graph_score": 0.06,
-    "changes": [],
-    "cyber_event": {
-      "id": "ce_1e27cc04",
-      "account_id": "acc_clean_1",
-      "device_id": "dev_clean_2",
-      "event_type": "login",
-      "ip_geo": "Mumbai, IN",
-      "timestamp": "2026-03-02T23:01:07.439720",
-      "anomaly_score": 0.15,
-      "raw_signals": {
-        "scenario": "normal_activity"
-      }
-    },
-    "transaction": {
-      "id": "tx_2dd8a731",
-      "sender": "acc_clean_2",
-      "receiver": "merchant_grocery",
-      "amount": 250.0,
-      "currency": "INR",
-      "method": "upi",
-      "timestamp": "2026-03-02T23:01:07.440062",
-      "velocity_score": 0.05,
+      "timestamp": "2026-03-02T23:54:09.121820",
+      "velocity_score": 0.08,
       "risk_flags": []
     },
     "alert": null,
@@ -784,7 +368,377 @@
     "accounts_involved": [
       "acc_clean_1",
       "acc_clean_2",
-      "merchant_grocery"
+      "merchant_recharge"
+    ]
+  },
+  "8": {
+    "tick": 8,
+    "timestamp": "2026-03-02T23:54:24.107420",
+    "scenario_type": "money_laundering",
+    "is_suspicious": true,
+    "unified_score": 0.763,
+    "cyber_score": 0.84,
+    "financial_score": 0.77,
+    "graph_score": 0.63,
+    "changes": [
+      "Transaction velocity anomaly: score 0.77",
+      "New device detected: dev_3345 at Bhopal, IN",
+      "Fund splitting detected: \u20b930,000.0 from acc_B \u2192 acc_C"
+    ],
+    "cyber_event": {
+      "id": "ce_b91447c7",
+      "account_id": "acc_B",
+      "device_id": "dev_3345",
+      "event_type": "new_device",
+      "ip_geo": "Bhopal, IN",
+      "timestamp": "2026-03-02T23:54:24.106527",
+      "anomaly_score": 0.84,
+      "raw_signals": {
+        "rapid_switch": true,
+        "accounts_in_session": 4,
+        "scenario": "device_reuse"
+      }
+    },
+    "transaction": {
+      "id": "tx_49902b9f",
+      "sender": "acc_B",
+      "receiver": "acc_C",
+      "amount": 30000.0,
+      "currency": "INR",
+      "method": "upi",
+      "timestamp": "2026-03-02T23:54:24.106726",
+      "velocity_score": 0.77,
+      "risk_flags": [
+        "rapid_transfer",
+        "splitting",
+        "layering"
+      ]
+    },
+    "alert": {
+      "id": "alert_2aedd5ea",
+      "accounts_flagged": [
+        "acc_B",
+        "acc_B",
+        "acc_C"
+      ],
+      "severity": "high",
+      "status": "new",
+      "unified_risk_score": 0.763,
+      "cyber_events": [
+        {
+          "id": "ce_b91447c7",
+          "account_id": "acc_B",
+          "device_id": "dev_3345",
+          "event_type": "new_device",
+          "ip_geo": "Bhopal, IN",
+          "timestamp": "2026-03-02T23:54:24.106527",
+          "anomaly_score": 0.84,
+          "raw_signals": {
+            "rapid_switch": true,
+            "accounts_in_session": 4,
+            "scenario": "device_reuse"
+          }
+        }
+      ],
+      "financial_transactions": [
+        {
+          "id": "tx_49902b9f",
+          "sender": "acc_B",
+          "receiver": "acc_C",
+          "amount": 30000.0,
+          "currency": "INR",
+          "method": "upi",
+          "timestamp": "2026-03-02T23:54:24.106726",
+          "velocity_score": 0.77,
+          "risk_flags": [
+            "rapid_transfer",
+            "splitting",
+            "layering"
+          ]
+        }
+      ],
+      "created_at": "2026-03-02T23:54:24.107201",
+      "gemini_explanation": "",
+      "recommended_action": ""
+    },
+    "gemini_analysis": null,
+    "accounts_involved": [
+      "acc_C",
+      "acc_B"
+    ]
+  },
+  "10": {
+    "tick": 10,
+    "timestamp": "2026-03-02T23:54:54.211450",
+    "scenario_type": "clean",
+    "is_suspicious": false,
+    "unified_score": 0.094,
+    "cyber_score": 0.13,
+    "financial_score": 0.02,
+    "graph_score": 0.14,
+    "changes": [],
+    "cyber_event": {
+      "id": "ce_7fd2c57b",
+      "account_id": "acc_clean_3",
+      "device_id": "dev_clean_2",
+      "event_type": "login",
+      "ip_geo": "Chennai, IN",
+      "timestamp": "2026-03-02T23:54:54.204095",
+      "anomaly_score": 0.13,
+      "raw_signals": {
+        "scenario": "normal_activity"
+      }
+    },
+    "transaction": {
+      "id": "tx_172e5792",
+      "sender": "acc_clean_1",
+      "receiver": "merchant_fuel",
+      "amount": 5000.0,
+      "currency": "INR",
+      "method": "upi",
+      "timestamp": "2026-03-02T23:54:54.207924",
+      "velocity_score": 0.02,
+      "risk_flags": []
+    },
+    "alert": null,
+    "gemini_analysis": null,
+    "accounts_involved": [
+      "acc_clean_1",
+      "merchant_fuel",
+      "acc_clean_3"
+    ]
+  },
+  "1": {
+    "tick": 1,
+    "timestamp": "2026-03-02T23:52:54.138803",
+    "scenario_type": "money_laundering",
+    "is_suspicious": true,
+    "unified_score": 0.8045,
+    "cyber_score": 0.96,
+    "financial_score": 0.73,
+    "graph_score": 0.66,
+    "changes": [
+      "Geo-location change: Ahmedabad, IN \u2192 Jaipur, IN",
+      "Transaction velocity anomaly: score 0.73"
+    ],
+    "cyber_event": {
+      "id": "ce_11b5b7d6",
+      "account_id": "acc_D",
+      "device_id": "dev_3345",
+      "event_type": "impossible_travel",
+      "ip_geo": "Jaipur, IN",
+      "timestamp": "2026-03-02T23:52:54.132579",
+      "anomaly_score": 0.96,
+      "raw_signals": {
+        "origin": "Ahmedabad, IN",
+        "destination": "Jaipur, IN",
+        "time_diff_min": 4,
+        "scenario": "impossible_travel"
+      }
+    },
+    "transaction": {
+      "id": "tx_2f4ac298",
+      "sender": "acc_victim_3",
+      "receiver": "acc_F",
+      "amount": 25000.0,
+      "currency": "INR",
+      "method": "upi",
+      "timestamp": "2026-03-02T23:52:54.135667",
+      "velocity_score": 0.73,
+      "risk_flags": [
+        "unusual_amount",
+        "new_beneficiary"
+      ]
+    },
+    "alert": {
+      "id": "alert_e1876256",
+      "accounts_flagged": [
+        "acc_D",
+        "acc_victim_3",
+        "acc_F"
+      ],
+      "severity": "high",
+      "status": "new",
+      "unified_risk_score": 0.8045,
+      "cyber_events": [
+        {
+          "id": "ce_11b5b7d6",
+          "account_id": "acc_D",
+          "device_id": "dev_3345",
+          "event_type": "impossible_travel",
+          "ip_geo": "Jaipur, IN",
+          "timestamp": "2026-03-02T23:52:54.132579",
+          "anomaly_score": 0.96,
+          "raw_signals": {
+            "origin": "Ahmedabad, IN",
+            "destination": "Jaipur, IN",
+            "time_diff_min": 4,
+            "scenario": "impossible_travel"
+          }
+        }
+      ],
+      "financial_transactions": [
+        {
+          "id": "tx_2f4ac298",
+          "sender": "acc_victim_3",
+          "receiver": "acc_F",
+          "amount": 25000.0,
+          "currency": "INR",
+          "method": "upi",
+          "timestamp": "2026-03-02T23:52:54.135667",
+          "velocity_score": 0.73,
+          "risk_flags": [
+            "unusual_amount",
+            "new_beneficiary"
+          ]
+        }
+      ],
+      "created_at": "2026-03-02T23:52:54.138350",
+      "gemini_explanation": "",
+      "recommended_action": ""
+    },
+    "gemini_analysis": null,
+    "accounts_involved": [
+      "acc_F",
+      "acc_D",
+      "acc_victim_3"
+    ]
+  },
+  "5": {
+    "tick": 5,
+    "timestamp": "2026-03-02T23:53:39.124798",
+    "scenario_type": "clean",
+    "is_suspicious": false,
+    "unified_score": 0.101,
+    "cyber_score": 0.12,
+    "financial_score": 0.08,
+    "graph_score": 0.1,
+    "changes": [],
+    "cyber_event": {
+      "id": "ce_4a667a6e",
+      "account_id": "acc_clean_3",
+      "device_id": "dev_clean_9",
+      "event_type": "login",
+      "ip_geo": "Kolkata, IN",
+      "timestamp": "2026-03-02T23:53:39.123950",
+      "anomaly_score": 0.12,
+      "raw_signals": {
+        "scenario": "normal_activity"
+      }
+    },
+    "transaction": {
+      "id": "tx_01808ec9",
+      "sender": "acc_clean_1",
+      "receiver": "merchant_grocery",
+      "amount": 850.0,
+      "currency": "INR",
+      "method": "upi",
+      "timestamp": "2026-03-02T23:53:39.124270",
+      "velocity_score": 0.08,
+      "risk_flags": []
+    },
+    "alert": null,
+    "gemini_analysis": null,
+    "accounts_involved": [
+      "merchant_grocery",
+      "acc_clean_1",
+      "acc_clean_3"
+    ]
+  },
+  "9": {
+    "tick": 9,
+    "timestamp": "2026-03-02T23:54:39.115332",
+    "scenario_type": "money_laundering",
+    "is_suspicious": true,
+    "unified_score": 0.9175,
+    "cyber_score": 0.89,
+    "financial_score": 0.94,
+    "graph_score": 0.93,
+    "changes": [
+      "Geo-location change: Bengaluru, IN \u2192 Chennai, IN",
+      "Transaction velocity anomaly: score 0.94",
+      "Fund consolidation: \u20b950,000.0 flowing to acc_kingpin"
+    ],
+    "cyber_event": {
+      "id": "ce_89c85d73",
+      "account_id": "acc_C",
+      "device_id": "dev_8891",
+      "event_type": "impossible_travel",
+      "ip_geo": "Chennai, IN",
+      "timestamp": "2026-03-02T23:54:39.109896",
+      "anomaly_score": 0.89,
+      "raw_signals": {
+        "origin": "Bengaluru, IN",
+        "destination": "Chennai, IN",
+        "time_diff_min": 5,
+        "scenario": "impossible_travel"
+      }
+    },
+    "transaction": {
+      "id": "tx_99e65365",
+      "sender": "acc_C",
+      "receiver": "acc_kingpin",
+      "amount": 50000.0,
+      "currency": "INR",
+      "method": "imps",
+      "timestamp": "2026-03-02T23:54:39.110156",
+      "velocity_score": 0.94,
+      "risk_flags": [
+        "consolidation",
+        "rapid_withdrawal"
+      ]
+    },
+    "alert": {
+      "id": "alert_ab0b1f09",
+      "accounts_flagged": [
+        "acc_C",
+        "acc_C",
+        "acc_kingpin"
+      ],
+      "severity": "critical",
+      "status": "new",
+      "unified_risk_score": 0.9175,
+      "cyber_events": [
+        {
+          "id": "ce_89c85d73",
+          "account_id": "acc_C",
+          "device_id": "dev_8891",
+          "event_type": "impossible_travel",
+          "ip_geo": "Chennai, IN",
+          "timestamp": "2026-03-02T23:54:39.109896",
+          "anomaly_score": 0.89,
+          "raw_signals": {
+            "origin": "Bengaluru, IN",
+            "destination": "Chennai, IN",
+            "time_diff_min": 5,
+            "scenario": "impossible_travel"
+          }
+        }
+      ],
+      "financial_transactions": [
+        {
+          "id": "tx_99e65365",
+          "sender": "acc_C",
+          "receiver": "acc_kingpin",
+          "amount": 50000.0,
+          "currency": "INR",
+          "method": "imps",
+          "timestamp": "2026-03-02T23:54:39.110156",
+          "velocity_score": 0.94,
+          "risk_flags": [
+            "consolidation",
+            "rapid_withdrawal"
+          ]
+        }
+      ],
+      "created_at": "2026-03-02T23:54:39.115166",
+      "gemini_explanation": "",
+      "recommended_action": ""
+    },
+    "gemini_analysis": null,
+    "accounts_involved": [
+      "acc_C",
+      "acc_kingpin"
     ]
   },
   "11": {
