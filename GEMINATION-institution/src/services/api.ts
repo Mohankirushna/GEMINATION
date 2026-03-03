@@ -1,7 +1,8 @@
 /* ── SurakshaFlow API Service Layer ─────────────────────────
- * All calls go through the Vite dev-proxy  /api → localhost:8000
- * In production, set VITE_API_URL to the real base.
+ * PRODUCTION HARDCODED VERSION
+ * Backend: https://gemination.onrender.com
  * ─────────────────────────────────────────────────────────── */
+
 import type {
   Alert,
   CyberEvent,
@@ -15,10 +16,12 @@ import type {
   STRReportResult,
 } from "../types";
 
-const BASE = import.meta.env.VITE_API_URL ?? "/api";
+/* 🔥 HARDCODED BACKEND BASE */
+const BASE = "https://gemination.onrender.com/api";
 
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   const url = `${BASE}${path}`;
+
   const res = await fetch(url, {
     headers: {
       "Content-Type": "application/json",
@@ -26,108 +29,40 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
     },
     ...opts,
   });
+
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`API ${res.status}: ${body}`);
   }
+
   return res.json() as Promise<T>;
 }
 
-/* ── Normalization helpers (snake_case API → camelCase frontend) ── */
-
-function normalizeCyberEvent(e: any): CyberEvent {
-  return {
-    id: e.id,
-    timestamp: e.timestamp,
-    type: e.event_type ?? e.type ?? "login",
-    event_type: e.event_type,
-    deviceId: e.device_id ?? e.deviceId ?? "",
-    device_id: e.device_id,
-    ipLocation: e.ip_geo ?? e.ipLocation ?? "",
-    ip_geo: e.ip_geo,
-    accountId: e.account_id ?? e.accountId ?? "",
-    account_id: e.account_id,
-    riskScore: e.anomaly_score ?? e.riskScore ?? 0,
-    anomaly_score: e.anomaly_score,
-    raw_signals: e.raw_signals,
-  };
-}
-
-function normalizeTransaction(t: any): FinancialTransaction {
-  return {
-    id: t.id,
-    timestamp: t.timestamp,
-    senderId: t.sender ?? t.senderId ?? "",
-    sender: t.sender,
-    receiverId: t.receiver ?? t.receiverId ?? "",
-    receiver: t.receiver,
-    amount: t.amount ?? 0,
-    type: t.method ?? t.type ?? "upi",
-    method: t.method,
-    riskScore: t.velocity_score ?? t.riskScore ?? 0,
-    velocity_score: t.velocity_score,
-    risk_flags: t.risk_flags,
-  };
-}
-
-function normalizeAlert(a: any): Alert {
-  return {
-    id: a.id,
-    timestamp: a.created_at ?? a.timestamp ?? new Date().toISOString(),
-    accountId: a.accounts_flagged?.[0] ?? a.accountId ?? a.id,
-    accounts_flagged: a.accounts_flagged,
-    unifiedRiskScore: a.unified_risk_score ?? a.unifiedRiskScore ?? 0,
-    unified_risk_score: a.unified_risk_score,
-    cyberEvents: (a.cyber_events ?? a.cyberEvents ?? []).map(
-      normalizeCyberEvent,
-    ),
-    cyber_events: a.cyber_events,
-    financialTransactions: (
-      a.financial_transactions ??
-      a.financialTransactions ??
-      []
-    ).map(normalizeTransaction),
-    financial_transactions: a.financial_transactions,
-    status: a.status ?? "new",
-    severity: a.severity,
-    geminiExplanation: a.gemini_explanation ?? a.geminiExplanation,
-    gemini_explanation: a.gemini_explanation,
-    recommendedAction: a.recommended_action ?? a.recommendedAction,
-    recommended_action: a.recommended_action,
-    created_at: a.created_at,
-    risk_breakdown: a.risk_breakdown,
-  };
-}
-
 /* ── Bank Dashboard ──────────────────────────────────────── */
+
 export const fetchBankSummary = () =>
   request<DashboardSummary>("/dashboard/bank/summary");
 
-export const fetchAlerts = async (status?: string): Promise<Alert[]> => {
-  const q = status ? `?status=${status}` : "";
-  const raw = await request<any[]>(`/dashboard/bank/alerts${q}`);
-  return raw.map(normalizeAlert);
-};
+export const fetchAlerts = (status?: string) =>
+  request<Alert[]>(
+    `/dashboard/bank/alerts${status ? `?status=${status}` : ""}`,
+  );
 
-export const fetchAlertDetail = async (alertId: string): Promise<Alert> => {
-  const raw = await request<any>(`/dashboard/bank/alert/${alertId}`);
-  return normalizeAlert(raw);
-};
+export const fetchAlertDetail = (alertId: string) =>
+  request<Alert>(`/dashboard/bank/alert/${alertId}`);
 
 export const performAccountAction = (
   alertId: string,
   action: string,
   reason?: string,
 ) =>
-  request<{ success: boolean; message: string }>(
-    `/dashboard/bank/alert/${alertId}/action`,
-    {
-      method: "POST",
-      body: JSON.stringify({ action, reason: reason ?? "" }),
-    },
-  );
+  request(`/dashboard/bank/alert/${alertId}/action`, {
+    method: "POST",
+    body: JSON.stringify({ action, reason: reason ?? "" }),
+  });
 
 /* ── User Dashboard ──────────────────────────────────────── */
+
 export const fetchUserRisk = (accountId: string) =>
   request<UserRiskResponse>(`/dashboard/user/${accountId}/risk`);
 
@@ -137,12 +72,15 @@ export const fetchUserEvents = (accountId: string) =>
   );
 
 /* ── Graph Intelligence ──────────────────────────────────── */
-export const fetchGraphData = () => request<GraphData>("/graph/network");
+
+export const fetchGraphData = () =>
+  request<GraphData>("/graph/network");
 
 export const fetchCluster = (accountId: string, hops = 2) =>
-  request<GraphData>(`/graph/cluster/${accountId}?hops=${hops}`);
+  request<GraphData>(`/graph/cluster/${accountId}?depth=${hops}`);
 
 /* ── Gemini AI ───────────────────────────────────────────── */
+
 export const explainAlert = (alertId: string) =>
   request<GeminiExplanation>("/gemini/explain", {
     method: "POST",
@@ -156,119 +94,61 @@ export const analyzeSMS = (message: string) =>
   });
 
 /* ── STR Report ──────────────────────────────────────────── */
+
 export const generateSTR = (alertId: string) =>
-  request<STRReportResult>(`/str/generate/${alertId}`, { method: "POST" });
+  request<STRReportResult>(`/str/generate/${alertId}`, {
+    method: "POST",
+  });
 
 export const getSTRDownloadUrl = (reportId: string) =>
   `${BASE}/str/download/${reportId}`;
 
 /* ── Digital Twin Simulation ─────────────────────────────── */
+
 export const runSimulation = (accountId?: string) =>
   request<SimulationResult>("/simulation/digital-twin", {
     method: "POST",
     body: JSON.stringify({ account_to_freeze: accountId ?? "acc_A" }),
   });
 
-/* ── Demo ────────────────────────────────────────────────── */
+/* ── Demo Controls ───────────────────────────────────────── */
+
 export const seedDemo = () =>
-  request<{ status: string }>("/demo/seed", { method: "POST" });
+  request("/demo/seed", { method: "POST" });
 
 export const runScenario = () =>
-  request<{ status: string }>("/demo/run-scenario", { method: "POST" });
+  request("/demo/run-scenario", { method: "POST" });
 
-/* ── Live Simulation (polls every 5 seconds) ─────────────── */
-export interface LiveEvent {
-  tick: number;
-  timestamp: string;
-  scenario_type: "money_laundering" | "clean";
-  is_suspicious: boolean;
-  cyber_event: any;
-  transaction: any;
-  risk_scores: {
-    cyber_score: number;
-    financial_score: number;
-    graph_score: number;
-    unified_score: number;
-  };
-  changes: string[];
-  alert: any | null;
-  risk_trend: Array<{ time: string; risk: number; alerts?: number }>;
-  gemini_prompt: string | null;
-  requires_gemini: boolean;
-  gemini_analysis?: {
-    explanation: string;
-    recommendation: string;
-    confidence: number;
-    key_indicators: string[];
-    regulatory_references?: string[];
-    immediate_steps?: string[];
-    accounts_to_freeze?: string[];
-    str_required?: boolean;
-  };
-}
+/* ── Live Simulation (poll every 5s) ─────────────────────── */
 
 export const fetchLiveEvent = () =>
-  request<LiveEvent>("/simulation/live-event");
+  request("/simulation/live-event");
 
-/* ── User Live Simulation (end-user dashboard polling) ───── */
-export interface UserLiveEvent {
-  tick: number;
-  timestamp: string;
-  account_id: string;
-  is_anomaly: boolean;
-  cyber_event: any;
-  transaction: any;
-  risk_scores: {
-    cyber_score: number;
-    financial_score: number;
-    graph_score: number;
-    unified_score: number;
-  };
-  risk_level: "low" | "medium" | "high";
-  changes: string[];
-  warnings: Array<{
-    type: string;
-    severity: "info" | "warning" | "high" | "critical";
-    title: string;
-    detail: string;
-    action: string;
-  }>;
-  procedures: string[];
-  risk_trend: Array<{ time: string; risk: number }>;
-  requires_gemini: boolean;
-  gemini_analysis?: {
-    explanation: string;
-    urgency: "safe" | "caution" | "dangerous";
-    confidence: number;
-    steps_to_take: string[];
-    prevention_tips: string[];
-    should_contact_bank: boolean;
-  };
-}
+/* ── User Live Simulation ────────────────────────────────── */
 
 export const fetchUserLiveEvent = (accountId: string) =>
-  request<UserLiveEvent>(`/simulation/user-event/${accountId}`);
+  request(`/simulation/user-event/${accountId}`);
 
-/* ── New User Data Generation ────────────────────────────── */
-export const generateUserData = (accountId: string, email: string = "") =>
-  request<any>("/user/generate-data", {
+/* ── New User Data ───────────────────────────────────────── */
+
+export const generateUserData = (accountId: string, email = "") =>
+  request("/user/generate-data", {
     method: "POST",
     body: JSON.stringify({ account_id: accountId, email }),
   });
 
 /* ── Email Phishing Analysis ─────────────────────────────── */
-export interface EmailAnalysisResult {
-  is_phishing: boolean;
-  confidence: number;
-  explanation: string;
-  risk_indicators: string[];
-  recommended_action: string;
-  threat_type: string;
-  analysis_source: string;
-}
 
-export const analyzeEmail = (emailContent: string, senderEmail: string = "", subject: string = "") =>
-  request<EmailAnalysisResult>("/gemini/analyze-email", {
+export const analyzeEmail = (
+  emailContent: string,
+  senderEmail = "",
+  subject = "",
+) =>
+  request("/gemini/analyze-email", {
     method: "POST",
-    body: JSON.stringify({ email_content: emailContent, sender_email: senderEmail, subject }),
+    body: JSON.stringify({
+      email_content: emailContent,
+      sender_email: senderEmail,
+      subject,
+    }),
   });
