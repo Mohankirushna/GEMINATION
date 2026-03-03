@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "224047581745",
+    "project_id": "gemination-bbecc",
+    "storage_bucket": "gemination-bbecc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:224047581745:android:6d4429ad039e49049ca310",
+        "android_client_info": {
+          "package_name": "com.surakshaflow.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "224047581745-6b6fimc9j6u70q8pabt55touftssnss1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.surakshaflow.mobile",
+            "certificate_hash": "b6dc5f75fc2308eee88f79049fff4ce7c773c66d"
+          }
+        },
+        {
+          "client_id": "224047581745-ehkq8t42141jb03mna7dabm1gng7ufg2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEkHbNIaI1Y9en3Emd7C9oNAVtOeVNfww"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "224047581745-ehkq8t42141jb03mna7dabm1gng7ufg2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "224047581745-aha0t7p9rq1s1moga0mjd3l4drfghl4l.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.surakshaflow.mobile"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
