@@ -15,7 +15,7 @@ import type {
   STRReportResult,
 } from "../types";
 
-const BASE = "https://gemination.onrender.com" ?? "/api";
+const BASE = "https://gemination.onrender.com/api";
 
 async function request<T>(path: string, opts?: RequestInit): Promise<T> {
   const url = `${BASE}${path}`;
